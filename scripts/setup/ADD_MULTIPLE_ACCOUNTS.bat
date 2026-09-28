@@ -10,7 +10,7 @@ echo.
 echo This will help you add multiple Google accounts to maximize quota.
 echo.
 echo CURRENT STATUS:
-cd /d "%~dp0antigravity-claude-proxy-main"
+cd /d "%~dp0..\..\Antigravity-Claude-Code-Proxy"
 npm run accounts:list
 echo.
 pause
@@ -34,7 +34,7 @@ pause
 echo.
 echo Starting account addition process...
 echo.
-cd /d "%~dp0antigravity-claude-proxy-main"
+cd /d "%~dp0..\..\Antigravity-Claude-Code-Proxy"
 
 echo.
 echo If the browser doesn't open automatically, you'll need to manually

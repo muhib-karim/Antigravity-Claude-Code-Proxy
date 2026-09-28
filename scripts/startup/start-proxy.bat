@@ -4,8 +4,8 @@ echo Starting Antigravity Claude Proxy...
 echo.
 
 :: Set the proxy directory
-set PROXY_DIR=%USERPROFILE%\Desktop\Projects\Antigravity-Claude-Code-Proxy\Antigravity-Claude-Code-Proxy
-set PYTHON_DIR=%USERPROFILE%\Desktop\Projects\Antigravity-Claude-Code-Proxy\perplexity-openai-api-ref
+set PROXY_DIR=%~dp0..\..\Antigravity-Claude-Code-Proxy
+set PYTHON_DIR=%~dp0..\..\perplexity-openai-api-ref
 
 :: Check if proxy is already running
 netstat -an | findstr ":8080.*LISTENING" >nul 2>&1

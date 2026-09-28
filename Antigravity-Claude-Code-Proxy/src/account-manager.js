@@ -19,7 +19,12 @@ import {
 } from './constants.js';
 import { refreshAccessToken } from './oauth.js';
 import { formatDuration } from './utils/helpers.js';
+import { RateLimitError } from './errors.js';
 import tokenExtractor from './token-extractor.js';
+
+// How long to skip an OAuth account whose token refresh could not reach Google.
+// Longer than the sticky-account wait, so requests move on instead of waiting for it.
+const TRANSIENT_REFRESH_COOLDOWN_MS = MAX_WAIT_BEFORE_ERROR_MS + 60 * 1000;
 
 export class AccountManager {
     #accounts = [];
@@ -27,6 +32,7 @@ export class AccountManager {
     #configPath;
     #settings = {};
     #initialized = false;
+    #configUnreadable = false; // config exists but could not be parsed; never overwrite it
 
     // Per-account caches
     #tokenCache = new Map(); // email -> { token, extractedAt }
@@ -75,7 +81,9 @@ export class AccountManager {
                 // No config file - use single account from Antigravity database
                 console.log('[AccountManager] No config file found. Using Antigravity database (single account mode)');
             } else {
+                this.#configUnreadable = true;
                 console.error('[AccountManager] Failed to load config:', error.message);
+                console.error(`[AccountManager] Leaving ${this.#configPath} untouched until it is fixed`);
             }
             // Fall back to default account
             await this.#loadDefaultAccount();
@@ -448,7 +456,13 @@ export class AccountManager {
                 console.log(`[AccountManager] Refreshed OAuth token for: ${account.email}`);
             } catch (error) {
                 console.error(`[AccountManager] Failed to refresh token for ${account.email}:`, error.message);
-                // Mark account as invalid (credentials need re-auth)
+                // Only a refresh rejected by Google means the credentials need re-auth;
+                // network failures (fetch throws before any response) are transient,
+                // so park the account briefly and let the caller try the next one
+                if (!String(error.message).startsWith('Token refresh failed')) {
+                    this.markRateLimited(account.email, TRANSIENT_REFRESH_COOLDOWN_MS);
+                    throw new RateLimitError(`Token refresh for ${account.email} could not reach Google: ${error.message}`, TRANSIENT_REFRESH_COOLDOWN_MS, account.email);
+                }
                 this.markInvalid(account.email, error.message);
                 throw new Error(`AUTH_INVALID: ${account.email}: ${error.message}`);
             }
@@ -636,6 +650,10 @@ export class AccountManager {
      * @returns {Promise<void>}
      */
     async saveToDisk() {
+        if (this.#configUnreadable) {
+            console.warn('[AccountManager] Not saving: existing account config could not be parsed');
+            return;
+        }
         try {
             // Ensure directory exists
             const dir = dirname(this.#configPath);
@@ -660,7 +678,7 @@ export class AccountManager {
                 activeIndex: this.#currentIndex
             };
 
-            await writeFile(this.#configPath, JSON.stringify(config, null, 2));
+            await writeFile(this.#configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
         } catch (error) {
             console.error('[AccountManager] Failed to save config:', error.message);
         }

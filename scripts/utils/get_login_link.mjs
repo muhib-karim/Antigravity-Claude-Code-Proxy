@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { getAuthorizationUrl } from './antigravity-claude-proxy-main/src/oauth.js';
+import { getAuthorizationUrl } from '../../Antigravity-Claude-Code-Proxy/src/oauth.js';
 
 const { url, verifier, state } = getAuthorizationUrl();
 
@@ -17,5 +17,5 @@ console.log('3. Grant permissions when prompted');
 console.log('4. Close the browser after authentication');
 console.log('5. Return to terminal and press Enter to continue\n');
 
-console.log('⚠️  IMPORTANT: Use a DIFFERENT Google account than your.account@gmail.com');
+console.log('⚠️  IMPORTANT: Use a DIFFERENT Google account than the ones already added');
 console.log('⚠️  You must CLOSE the browser after granting permissions\n');

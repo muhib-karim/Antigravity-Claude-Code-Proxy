@@ -43,7 +43,8 @@
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-models">Models</a> •
   <a href="#-dashboard">Dashboard</a> •
-  <a href="#-status-bar">Status Bar</a>
+  <a href="#-status-bar-extension-v39">Status Bar</a> •
+  <a href="#-development--testing">Development</a>
 </p>
 
 ---
@@ -126,8 +127,8 @@
 
 ### Prerequisites
 
-- **Node.js** 18+ 
-- **PM2** (process manager) - `npm install -g pm2`
+- **Node.js** 18+ (CI runs the tests on Node 20 and 22)
+- **PM2** (optional process manager) - `npm install -g pm2`
 - **Antigravity** desktop app ([Download](https://antigravity.dev)) or VS Code
 - **Claude Code CLI** (`npm install -g @anthropic-ai/claude-code`)
 
@@ -141,14 +142,34 @@ cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
 # Install dependencies
 npm install
 
-# Start the proxy (runs as persistent background service)
+# Start the proxy in the foreground...
+npm start
+
+# ...or as a persistent background service with PM2
 pm2 start src/index.js --name antigravity-proxy
 pm2 save
 ```
 
+### Add an Account
+
+Google sign-in needs an OAuth client secret, which is not stored in this repository. Set it first (in your shell or a `.env` file next to `package.json`):
+
+```bash
+export GOOGLE_OAUTH_CLIENT_SECRET="<your OAuth client secret>"
+# optional, if you use your own OAuth app:
+export GOOGLE_OAUTH_CLIENT_ID="<your OAuth client id>"
+```
+
+```bash
+npm run accounts:add     # opens a Google sign-in in your browser (needs a desktop browser)
+npm run accounts:list    # show configured accounts
+```
+
+If no account is configured, the proxy still starts and `/health` answers, but `/v1/messages` returns a clear "No accounts available" error.
+
 ### Configure Environment
 
-**Windows (PowerShell):**
+**Windows (PowerShell, not verified on Linux CI):**
 ```powershell
 [Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "http://localhost:8080", "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "antigravity-proxy", "User")
@@ -163,7 +184,7 @@ source ~/.bashrc
 
 ### Auto-Start on Windows Login (Optional)
 
-> **Note:** By default, the proxy only starts when you open Antigravity with the extension enabled. For system-wide startup on Windows login, run:
+> **Note:** By default, the proxy only starts when you open Antigravity with the extension enabled. For system-wide startup on Windows login, run (Windows-only batch scripts; not verified on Linux):
 
 ```batch
 cd scripts\setup
@@ -193,8 +214,10 @@ claude
 |-------|-------|----------|
 | `gemini-3-flash` | `flash` | Fast tasks, simple commands |
 | `gemini-3-pro-high` | `pro` | Complex coding, deep analysis |
-| `claude-opus-4-5-thinking` | `opus` | Complex reasoning |
-| `claude-sonnet-4-5-thinking` | `sonnet` | Balanced performance |
+| `claude-opus-4-5-thinking` | `claude-opus` | Complex reasoning |
+| `claude-sonnet-4-5-thinking` | `claude-sonnet` | Balanced performance |
+
+> The short aliases `opus` and `sonnet` map to the Perplexity models `pplx-claude-opus` / `pplx-claude-sonnet`, which are chat-only (no tool use).
 
 ### 🔍 Search Models (Chat + Web Search)
 
@@ -269,6 +292,7 @@ The status bar extension shows your current model and quota information in real-
 | `/v1/messages` | POST | Anthropic Messages API |
 | `/v1/models` | GET | List available models |
 | `/active-model` | GET/POST/DELETE | Model override control |
+| `/session-model` | POST | Per-session model |
 | `/dashboard` | GET | Web dashboard |
 | `/health` | GET | Health check |
 | `/account-limits` | GET | Account quotas |
@@ -279,27 +303,83 @@ The status bar extension shows your current model and quota information in real-
 
 ```
 Antigravity-Claude-Code-Proxy/
-├── src/
-│   ├── server.js          # Main Express server
-│   ├── account-manager.js # Multi-account handling
-│   ├── constants.js       # Model aliases & config
-│   └── public/
-│       └── dashboard.html # Web dashboard
+├── Antigravity-Claude-Code-Proxy/   # The proxy package (run npm commands here)
+│   ├── src/
+│   │   ├── index.js           # Entry point (starts the HTTP server)
+│   │   ├── server.js          # Express app and routes
+│   │   ├── cloudcode-client.js# Upstream Cloud Code client with retries/failover
+│   │   ├── account-manager.js # Multi-account handling
+│   │   ├── format/            # Anthropic <-> Google format converters
+│   │   ├── constants.js       # Model aliases & config
+│   │   └── public/
+│   │       └── dashboard.html # Web dashboard
+│   ├── tests/
+│   │   ├── smoke/             # Offline tests run by `npm test`
+│   │   └── *.cjs              # Live tests run by `npm run test:live`
+│   └── package.json           # v4.1.0
+├── scripts/                   # Windows setup/startup helpers (.bat/.ps1)
 ├── docs/
-│   └── images/            # Showcase images
-├── SECURITY.md            # Security policy
-├── CHANGELOG.md           # Version history
-└── package.json           # v2.5.0
+│   └── images/                # Showcase images
+├── SECURITY.md                # Security policy
+└── CHANGELOG.md               # Version history
 ```
+
+---
+
+## 🧪 Development & Testing
+
+Run these from the package folder. They are the same steps CI runs ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+```bash
+cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
+
+# Install exact dependencies from the lockfile.
+# PUPPETEER_SKIP_DOWNLOAD=true skips the Chromium download, which is only needed for Perplexity browser login.
+PUPPETEER_SKIP_DOWNLOAD=true npm ci
+
+# Lint (errors fail the build; warnings are reported)
+npm run lint
+
+# Offline test suite (no accounts, keys or network needed)
+npm test
+
+# Run the proxy in the foreground, then check it from another terminal
+npm start
+curl http://localhost:8080/health
+```
+
+`npm test` uses Node's built-in test runner. It starts the real proxy on a free port with a temporary home folder and points it at a mock Cloud Code server. It covers `/health`, `/v1/models`, streaming and non-streaming `/v1/messages`, tool calls, per-session models, the no-account error path, the model-switch endpoints, cross-origin blocking, account-file persistence, and the request/response format converters.
+
+The older end-to-end scripts talk to real models, so they need a running proxy with at least one configured account and are not part of `npm test`:
+
+```bash
+npm start            # terminal 1
+npm run test:live    # terminal 2
+```
+
+### Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PORT` | `8080` | HTTP port |
+| `HOST` | `127.0.0.1` | Bind address. Only use `0.0.0.0` if you really want other machines to reach the proxy; it has no authentication |
+| `ACCOUNT_CONFIG_PATH` | `~/.config/antigravity-proxy/accounts.json` | Google account store |
+| `PROXY_STATE_DIR` | package folder | Where `logs/`, `model-override.json` and `session-models.json` are written |
+| `CORS_ALLOWED_ORIGINS` | *(empty)* | Extra comma-separated browser origins allowed to call the proxy (localhost and editor webviews are always allowed). If you set `HOST=0.0.0.0` and open the dashboard via another address, add that address here, e.g. `http://192.168.1.10:8080` |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | *(none; required for Google sign-in and token refresh)* | OAuth client secret. Not stored in the repository |
+| `GOOGLE_OAUTH_CLIENT_ID` | built-in client id | OAuth client id, for your own OAuth app |
+| `CLOUDCODE_ENDPOINTS` | Google Cloud Code endpoints | Comma-separated upstream override (the tests point this at a mock server) |
+
+> Perplexity models are served through a separate Python server on `localhost:8000` that is not part of this repository, so they are not covered by the tests.
 
 ---
 
 ## 🔒 Security
 
-- **No credentials in code**: All sensitive data stored locally
+- **No credentials in code**: the OAuth client secret comes from `GOOGLE_OAUTH_CLIENT_SECRET` (older revisions embedded it; it is no longer in the source). All sensitive data stored locally; account files are written with owner-only permissions (`0600`)
 - **Comprehensive .gitignore**: Accounts, tokens, logs excluded
-- **npm audit**: 0 vulnerabilities
-- **Local-only**: Runs on localhost by default
+- **Local-only**: Binds to `127.0.0.1` by default. Requests from other websites (foreign `Origin` headers) and, while bound to loopback, requests with a non-local `Host` header (DNS rebinding) are refused
+- **npm audit**: 4 high-severity advisories remain in Puppeteer's browser download chain (`extract-zip` via `@puppeteer/browsers`); fixing them needs a Puppeteer major upgrade
 
 See [SECURITY.md](SECURITY.md) for full security policy.
 

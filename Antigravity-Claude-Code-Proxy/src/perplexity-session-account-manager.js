@@ -50,7 +50,7 @@ export class PerplexitySessionAccountManager {
                 updatedAt: new Date().toISOString()
             };
 
-            await writeFile(this.#configPath, JSON.stringify(config, null, 2));
+            await writeFile(this.#configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
         } catch (error) {
             console.error('[PerplexitySessionManager] Failed to save config:', error);
         }

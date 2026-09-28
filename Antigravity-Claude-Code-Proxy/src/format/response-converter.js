@@ -70,10 +70,9 @@ export function convertGoogleToAnthropic(googleResponse, model) {
 
     // Determine stop reason
     const finishReason = firstCandidate.finishReason;
+    // Gemini reports STOP for function calls too, so tool calls take precedence over STOP
     let stopReason = 'end_turn';
-    if (finishReason === 'STOP') {
-        stopReason = 'end_turn';
-    } else if (finishReason === 'MAX_TOKENS') {
+    if (finishReason === 'MAX_TOKENS') {
         stopReason = 'max_tokens';
     } else if (finishReason === 'TOOL_USE' || hasToolCalls) {
         stopReason = 'tool_use';

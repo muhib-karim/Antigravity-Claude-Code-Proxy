@@ -4,12 +4,14 @@
  */
 
 import app from './server.js';
-import { DEFAULT_PORT } from './constants.js';
+import { DEFAULT_PORT, DEFAULT_HOST } from './constants.js';
 
 const PORT = process.env.PORT || DEFAULT_PORT;
+const HOST = DEFAULT_HOST;
 
-// Track server instance for graceful shutdown
+// Track server instances for graceful shutdown
 let server = null;
+let server6 = null; // optional IPv6 loopback listener (see below)
 let isShuttingDown = false;
 
 /**
@@ -34,20 +36,19 @@ async function gracefulShutdown(signal) {
     }, shutdownTimeout);
 
     try {
-        // Stop accepting new connections
-        if (server) {
-            await new Promise((resolve, reject) => {
-                server.close((err) => {
-                    if (err) {
-                        console.log('[Server] Error closing server:', err.message);
-                        reject(err);
-                    } else {
-                        console.log('[Server] Server closed, no longer accepting connections');
-                        resolve();
-                    }
-                });
+        // Stop accepting new connections and wait for in-flight requests on both listeners
+        const closing = [server, server6].filter(Boolean).map(srv => new Promise((resolve, reject) => {
+            srv.close((err) => {
+                if (err) {
+                    console.log('[Server] Error closing server:', err.message);
+                    reject(err);
+                } else {
+                    resolve();
+                }
             });
-        }
+        }));
+        await Promise.all(closing);
+        console.log('[Server] Server closed, no longer accepting connections');
 
         // Allow time for any pending async operations
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -77,13 +78,26 @@ process.on('unhandledRejection', (reason, promise) => {
     // Don't exit on unhandled rejections, just log them
 });
 
-server = app.listen(PORT, () => {
+// When bound to the IPv4 loopback, also listen on the IPv6 loopback so clients
+// that resolve "localhost" to ::1 can still connect. Skipped if IPv6 is unavailable.
+if (HOST === '127.0.0.1') {
+    server6 = app.listen(PORT, '::1');
+    server6.on('error', (error) => {
+        server6 = null;
+        if (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT') return;
+        console.error(`[Server] Could not listen on [::1]:${PORT} (${error.code || error.message}).`);
+        console.error('[Server] Another program may be using this port; clients that resolve localhost to ::1 will not reach the proxy.');
+    });
+}
+
+server = app.listen(PORT, HOST, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║           Antigravity Claude Proxy Server                    ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
 ║  Server running at: http://localhost:${PORT}                   ║
+║  ${`Listening on: ${HOST}`.padEnd(60)}║
 ║                                                              ║
 ║  Endpoints:                                                  ║
 ║    POST /v1/messages  - Anthropic Messages API               ║
