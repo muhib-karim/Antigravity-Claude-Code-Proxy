@@ -1404,12 +1404,12 @@
 
                 tbody.innerHTML = data.sessions.map(s => `
                     <tr>
-                        <td><code style="font-size:0.75rem;background:var(--bg-hover);padding:0.2rem 0.4rem;border-radius:4px;">${s.sessionId.slice(0, 12)}...</code></td>
-                        <td>${s.name || '-'}</td>
-                        <td><span class="badge badge-success">${s.model}</span></td>
+                        <td><code style="font-size:0.75rem;background:var(--bg-hover);padding:0.2rem 0.4rem;border-radius:4px;">${esc(s.sessionId.slice(0, 12))}...</code></td>
+                        <td>${esc(s.name || '-')}</td>
+                        <td><span class="badge badge-success">${esc(s.model)}</span></td>
                         <td style="font-size:0.8rem;color:var(--text-muted);">${formatTimeAgo(s.lastUsed)}</td>
                         <td style="font-size:0.8rem;color:var(--text-muted);">${formatTimeAgo(s.createdAt)}</td>
-                        <td><button class="btn-delete" onclick="deleteSession('${s.sessionId}')" title="Delete session"><span class="material-symbols-rounded" style="font-size:16px;">delete</span></button></td>
+                        <td><button class="btn-delete" onclick="deleteSession(${jsArg(s.sessionId)})" title="Delete session"><span class="material-symbols-rounded" style="font-size:16px;">delete</span></button></td>
                     </tr>
                 `).join('');
             } catch (e) {
@@ -1426,6 +1426,14 @@
             } catch (e) {
                 showToast('Failed to delete session', true);
             }
+        }
+
+        // Escape server-provided values before placing them in HTML or inline onclick handlers
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        }
+        function jsArg(value) {
+            return esc(JSON.stringify(String(value ?? '')));
         }
 
         function formatTimeAgo(dateStr) {
@@ -1715,7 +1723,7 @@ Note: Even with stale label, clicking "Custom model" WILL use the dashboard-sele
                 statusTip = `<div style="font-size:0.75rem;color:var(--danger);margin-top:4px;">⚠️ Token expired - remove \u0026 re-add account</div>`;
             }
 
-            const onclick = selectable ? `onclick="selectAccount('${email}')"` : '';
+            const onclick = selectable ? `onclick="selectAccount(${jsArg(email)})"` : '';
             const selected = selectedAccount === email ? 'selected' : '';
             const accountType = acc.type === 'perplexity' ? 'perplexity' : 'google';
 
@@ -1727,9 +1735,9 @@ Note: Even with stale label, clicking "Custom model" WILL use the dashboard-sele
             return `<div class="account-card ${selected}" ${onclick}>
                 <div class="account-header">
                     <div class="account-info">
-                        <div class="account-avatar ${avatarClass}">${initial}</div>
+                        <div class="account-avatar ${avatarClass}">${esc(initial)}</div>
                         <div>
-                            <div class="account-email">${email.split('@')[0]}</div>
+                            <div class="account-email">${esc(email.split('@')[0])}</div>
                             <div class="account-type">${type}</div>
                             ${resetTip}
                             ${statusTip}
@@ -1737,8 +1745,8 @@ Note: Even with stale label, clicking "Custom model" WILL use the dashboard-sele
                     </div>
                     <div style="display:flex;align-items:center;gap:0.5rem;">
                         <span class="badge ${badgeClass}" title="${status === 'Expired' ? 'Token expired - open Antigravity IDE and re-login' : ''}">${status}</span>
-                        ${acc.type === 'perplexity' ? `<button class="btn-delete material-symbols-rounded" onclick="event.stopPropagation();renamePerplexityAccount('${email}')" title="Rename account" style="background:none;color:var(--text-muted);font-size:16px;">edit</button>` : ''}
-                        <button class="btn-delete material-symbols-rounded" onclick="event.stopPropagation();confirmDeleteAccount('${email}','${accountType}')" title="Remove account" style="font-size:16px;">close</button>
+                        ${acc.type === 'perplexity' ? `<button class="btn-delete material-symbols-rounded" onclick="event.stopPropagation();renamePerplexityAccount(${jsArg(email)})" title="Rename account" style="background:none;color:var(--text-muted);font-size:16px;">edit</button>` : ''}
+                        <button class="btn-delete material-symbols-rounded" onclick="event.stopPropagation();confirmDeleteAccount(${jsArg(email)},'${accountType}')" title="Remove account" style="font-size:16px;">close</button>
                     </div>
                 </div>
             </div>`;
@@ -1773,11 +1781,11 @@ Note: Even with stale label, clicking "Custom model" WILL use the dashboard-sele
                 const usageCount = isPerplexity ? (usage.perplexity[m.id] || 0) : (usage.google[m.id] || 0);
                 const providerLabel = isPerplexity ? '🟣 Perplexity' : '🔵 Google AI';
                 return `<tr>
-                    <td><span class="model-id">${m.id}</span></td>
+                    <td><span class="model-id">${esc(m.id)}</span></td>
                     <td>${providerLabel}</td>
-                    <td style="color:var(--text-muted);font-size:0.8rem;">${m.description || '-'}</td>
+                    <td style="color:var(--text-muted);font-size:0.8rem;">${esc(m.description || '-')}</td>
                     <td style="font-size:0.8rem;">${usageCount} uses</td>
-                    <td><button class="btn btn-ghost btn-sm material-symbols-rounded" style="font-size:16px;" onclick="copyCmd('${m.id}')">content_copy</button></td>
+                    <td><button class="btn btn-ghost btn-sm material-symbols-rounded" style="font-size:16px;" onclick="copyCmd(${jsArg(m.id)})">content_copy</button></td>
                 </tr>`;
             }).join('');
         }
@@ -2014,13 +2022,13 @@ Note: Even with stale label, clicking "Custom model" WILL use the dashboard-sele
                 <div class="account-card" style="cursor:default;">
                     <div class="account-header">
                         <div class="account-info">
-                            <div class="account-avatar perplexity">${(a.email || 'P')[0].toUpperCase()}</div>
-                            <div><div class="account-email">${a.email || 'Perplexity User'}</div><div class="account-type">Perplexity Pro</div></div>
+                            <div class="account-avatar perplexity">${esc((a.email || 'P')[0].toUpperCase())}</div>
+                            <div><div class="account-email">${esc(a.email || 'Perplexity User')}</div><div class="account-type">Perplexity Pro</div></div>
                         </div>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
                             <span class="badge ${a.isRateLimited ? 'badge-warning' : 'badge-success'}">${a.isRateLimited ? 'Limited' : 'Active'}</span>
-                            <button class="btn-delete material-symbols-rounded" onclick="renamePerplexityAccount('${a.email}')" title="Rename account" style="background:none;color:var(--text-muted);font-size:16px;">edit</button>
-                            <button class="btn-delete material-symbols-rounded" onclick="confirmDeleteAccount('${a.email}','perplexity')" title="Remove account" style="font-size:16px;">close</button>
+                            <button class="btn-delete material-symbols-rounded" onclick="renamePerplexityAccount(${jsArg(a.email)})" title="Rename account" style="background:none;color:var(--text-muted);font-size:16px;">edit</button>
+                            <button class="btn-delete material-symbols-rounded" onclick="confirmDeleteAccount(${jsArg(a.email)},'perplexity')" title="Remove account" style="font-size:16px;">close</button>
                         </div>
                     </div>
                     <div class="account-body" style="font-size:0.75rem;color:var(--text-muted);">

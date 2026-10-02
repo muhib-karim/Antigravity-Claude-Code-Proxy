@@ -127,7 +127,7 @@ export class ApiError extends AntigravityError {
 export function isRateLimitError(error) {
     if (error instanceof RateLimitError) return true;
     const msg = (error.message || '').toLowerCase();
-    return msg.includes('429') ||
+    return /\b429\b/.test(msg) ||
         msg.includes('resource_exhausted') ||
         msg.includes('quota_exhausted') ||
         msg.includes('rate limit');

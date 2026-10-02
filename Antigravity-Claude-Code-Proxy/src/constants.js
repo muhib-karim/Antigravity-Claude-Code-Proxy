@@ -70,10 +70,13 @@ const ANTIGRAVITY_ENDPOINT_DAILY = 'https://daily-cloudcode-pa.sandbox.googleapi
 const ANTIGRAVITY_ENDPOINT_PROD = 'https://cloudcode-pa.googleapis.com';
 
 // Endpoint fallback order (daily → prod)
-export const ANTIGRAVITY_ENDPOINT_FALLBACKS = [
-    ANTIGRAVITY_ENDPOINT_DAILY,
-    ANTIGRAVITY_ENDPOINT_PROD
-];
+// Can be overridden with a comma-separated CLOUDCODE_ENDPOINTS list (e.g. for a local mock in tests)
+export const ANTIGRAVITY_ENDPOINT_FALLBACKS = getEnv('CLOUDCODE_ENDPOINTS')
+    ? getEnv('CLOUDCODE_ENDPOINTS').split(',').map(e => e.trim().replace(/\/+$/, '')).filter(Boolean)
+    : [
+        ANTIGRAVITY_ENDPOINT_DAILY,
+        ANTIGRAVITY_ENDPOINT_PROD
+    ];
 
 // Required headers for Antigravity API requests
 export const ANTIGRAVITY_HEADERS = {
@@ -91,6 +94,9 @@ export const DEFAULT_PROJECT_ID = getEnv('DEFAULT_PROJECT_ID', 'rising-fact-p41f
 
 // Server configuration (can be overridden via environment variables)
 export const DEFAULT_PORT = getEnvInt('PORT', 8080);
+// Bind to loopback by default so the proxy (and the accounts behind it) is not exposed to the network.
+// Set HOST=0.0.0.0 to listen on all interfaces.
+export const DEFAULT_HOST = getEnv('HOST', '127.0.0.1');
 export const REQUEST_BODY_LIMIT = getEnv('REQUEST_BODY_LIMIT', '50mb');
 
 // Token and timing configuration
@@ -264,12 +270,12 @@ export function isThinkingModel(modelName) {
 // Note: These are public OAuth credentials for the Antigravity integration.
 // For custom OAuth apps, set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET
 const DEFAULT_OAUTH_CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
-const DEFAULT_OAUTH_CLIENT_SECRET = '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';
+// The client secret is not stored in the repository: set GOOGLE_OAUTH_CLIENT_SECRET in the environment (or .env).
 
 // Google OAuth configuration
 export const OAUTH_CONFIG = {
     clientId: getEnv('GOOGLE_OAUTH_CLIENT_ID', DEFAULT_OAUTH_CLIENT_ID),
-    clientSecret: getEnv('GOOGLE_OAUTH_CLIENT_SECRET', DEFAULT_OAUTH_CLIENT_SECRET),
+    clientSecret: getEnv('GOOGLE_OAUTH_CLIENT_SECRET', ''),
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
@@ -292,6 +298,7 @@ export default {
     REQUEST_BODY_LIMIT,
     ANTIGRAVITY_AUTH_PORT,
     DEFAULT_PORT,
+    DEFAULT_HOST,
     ACCOUNT_CONFIG_PATH,
     ANTIGRAVITY_DB_PATH,
     DEFAULT_COOLDOWN_MS,

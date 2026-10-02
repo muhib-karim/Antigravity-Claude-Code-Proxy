@@ -16,14 +16,17 @@ import { PerplexitySessionAccountManager } from './perplexity-session-account-ma
 import { getLoginService } from './perplexity-browser-login.js';
 import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
-import { REQUEST_BODY_LIMIT, resolveModelAlias } from './constants.js';
+import { REQUEST_BODY_LIMIT, DEFAULT_HOST, resolveModelAlias } from './constants.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
 import fs from 'fs';
+import { homedir } from 'os';
 
 // ================= FILE LOGGING SYSTEM =================
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOG_DIR = join(__dirname, '..', 'logs');
+// Directory for runtime state (logs, model override, session models). Defaults to the package root.
+const STATE_DIR = process.env.PROXY_STATE_DIR || join(__dirname, '..');
+const LOG_DIR = join(STATE_DIR, 'logs');
 const LOG_FILE = join(LOG_DIR, 'proxy.log');
 
 // Ensure logs directory exists
@@ -82,10 +85,15 @@ let globalModelOverride = null; // null = use request's model, string = override
 let lastExtensionModel = null; // Track last model extension sent to detect user changes
 
 // Paths for persistence and syncing
-const ANTIGRAVITY_SETTINGS = join(process.env.APPDATA || '', 'Antigravity', 'User', 'settings.json');
-const VSCODE_SETTINGS = join(process.env.APPDATA || '', 'Code', 'User', 'settings.json');
-const CLAUDE_CODE_SETTINGS = join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'settings.json');
-const MODEL_OVERRIDE_FILE = join(__dirname, '..', 'model-override.json');
+// Per-user editor config dir: %APPDATA% on Windows, ~/Library/Application Support on macOS, ~/.config elsewhere
+const USER_HOME = process.env.USERPROFILE || process.env.HOME || homedir();
+const EDITOR_CONFIG_DIR = process.env.APPDATA || (process.platform === 'darwin'
+    ? join(USER_HOME, 'Library', 'Application Support')
+    : join(USER_HOME, '.config'));
+const ANTIGRAVITY_SETTINGS = join(EDITOR_CONFIG_DIR, 'Antigravity', 'User', 'settings.json');
+const VSCODE_SETTINGS = join(EDITOR_CONFIG_DIR, 'Code', 'User', 'settings.json');
+const CLAUDE_CODE_SETTINGS = join(USER_HOME, '.claude', 'settings.json');
+const MODEL_OVERRIDE_FILE = join(STATE_DIR, 'model-override.json');
 
 // Load persisted model override on startup
 // First tries model-override.json, then falls back to ~/.claude/settings.json
@@ -166,7 +174,17 @@ function setActiveModel(model) {
     return resolved;
 }
 
+// Model ids are short identifiers; anything else must never be spliced into settings files.
+// (A function declaration, so it is usable by the startup sync that runs above this point.)
+function isValidModelName(model) {
+    return typeof model === 'string' && /^[A-Za-z0-9._:-]{1,100}$/.test(model);
+}
+
 function syncModelToSettings(model) {
+    if (!isValidModelName(model)) {
+        console.warn('[ModelSync] Refusing to write invalid model name to settings files');
+        return;
+    }
     const filesToUpdate = [ANTIGRAVITY_SETTINGS, VSCODE_SETTINGS];
 
     for (const settingsPath of filesToUpdate) {
@@ -178,7 +196,7 @@ function syncModelToSettings(model) {
                 // Update claudeCode.selectedModel
                 const regex = /"claudeCode\.selectedModel"\s*:\s*"[^"]*"/;
                 if (regex.test(content)) {
-                    content = content.replace(regex, `"claudeCode.selectedModel": "${model}"`);
+                    content = content.replace(regex, () => `"claudeCode.selectedModel": ${JSON.stringify(model)}`);
                     updated = true;
                 }
 
@@ -186,7 +204,7 @@ function syncModelToSettings(model) {
                 // This pattern matches: {"name": "ANTHROPIC_MODEL", "value": "..."}
                 const envModelRegex = /("name"\s*:\s*"ANTHROPIC_MODEL"\s*,\s*"value"\s*:\s*)"[^"]*"/;
                 if (envModelRegex.test(content)) {
-                    content = content.replace(envModelRegex, `$1"${model}"`);
+                    content = content.replace(envModelRegex, (_match, prefix) => `${prefix}${JSON.stringify(model)}`);
                     updated = true;
                     console.log(`[ModelSync] Updated ANTHROPIC_MODEL env var to: ${model}`);
                 }
@@ -246,7 +264,7 @@ function clearModelOverride() {
 // Allows each Antigravity window or CLI terminal to have its own model
 // Sessions persist to disk and survive proxy restarts
 
-const SESSION_MODELS_FILE = join(__dirname, '..', 'session-models.json');
+const SESSION_MODELS_FILE = join(STATE_DIR, 'session-models.json');
 const sessionModels = new Map(); // sessionId -> { model, lastUsed, name }
 
 // Load persisted sessions on startup
@@ -358,7 +376,43 @@ async function ensureInitialized() {
 }
 
 // Middleware
-app.use(cors());
+// Browsers attach an Origin header to cross-site requests. Only local pages (the dashboard,
+// editor webviews) and extra origins listed in CORS_ALLOWED_ORIGINS may use the proxy that way,
+// so a random website cannot drive the account/model/restart endpoints. CLI clients send no Origin.
+const LOCAL_ORIGIN_PATTERN = /^(https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?|vscode-webview:\/\/[^\s]+|vscode-file:\/\/[^\s]+)$/i;
+const EXTRA_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',').map(o => o.trim()).filter(Boolean);
+
+function isAllowedOrigin(origin) {
+    return !origin || LOCAL_ORIGIN_PATTERN.test(origin) || EXTRA_ALLOWED_ORIGINS.includes(origin);
+}
+
+// While bound to loopback, also require a local Host header. This stops DNS-rebinding pages
+// (which send no Origin on same-origin GETs) from reading account and session data.
+const LOCAL_HOST_PATTERN = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+const ENFORCE_LOCAL_HOST = ['127.0.0.1', 'localhost', '::1'].includes(DEFAULT_HOST);
+const EXTRA_ALLOWED_HOSTS = EXTRA_ALLOWED_ORIGINS.map(o => o.replace(/^[a-z-]+:\/\//i, '').replace(/\/.*$/, ''));
+
+function isAllowedHost(host) {
+    return !ENFORCE_LOCAL_HOST || !host || LOCAL_HOST_PATTERN.test(host) || EXTRA_ALLOWED_HOSTS.includes(host);
+}
+
+app.use((req, res, next) => {
+    if (!isAllowedHost(req.headers.host)) {
+        return res.status(403).json({
+            type: 'error',
+            error: { type: 'permission_error', message: 'Requests must use localhost or 127.0.0.1 as the host' }
+        });
+    }
+    if (!isAllowedOrigin(req.headers.origin)) {
+        return res.status(403).json({
+            type: 'error',
+            error: { type: 'permission_error', message: 'Cross-origin requests from this origin are not allowed' }
+        });
+    }
+    next();
+});
+app.use(cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin)) }));
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 
 // Serve static files (dashboard)
@@ -401,6 +455,9 @@ app.post('/active-model', (req, res) => {
     const { model } = req.body;
     if (!model) {
         return res.status(400).json({ error: 'model is required' });
+    }
+    if (!isValidModelName(model)) {
+        return res.status(400).json({ error: 'invalid model name' });
     }
     const resolved = setActiveModel(model);
     res.json({
@@ -450,6 +507,12 @@ app.post('/session-model', (req, res) => {
     const { sessionId, model, name } = req.body;
     if (!model) {
         return res.status(400).json({ error: 'model is required' });
+    }
+    if (!isValidModelName(model)) {
+        return res.status(400).json({ error: 'invalid model name' });
+    }
+    if (sessionId != null && typeof sessionId !== 'string') {
+        return res.status(400).json({ error: 'sessionId must be a string' });
     }
 
     const resolved = setSessionModel(sessionId, model, name);
@@ -1040,14 +1103,19 @@ app.get('/v1/models', async (req, res) => {
         });
 
         // Get Google Cloud Code models if available
+        // An upstream failure should not hide the active model or Perplexity models
         const account = accountManager.pickNext();
         if (account) {
-            const token = await accountManager.getTokenForAccount(account);
-            const googleModels = await listModels(token);
-            if (googleModels && googleModels.data) {
-                // Filter out duplicates (if activeModel is already in the list)
-                const filteredModels = googleModels.data.filter(m => m.id !== activeModel);
-                allModels.data.push(...filteredModels);
+            try {
+                const token = await accountManager.getTokenForAccount(account);
+                const googleModels = await listModels(token);
+                if (googleModels && googleModels.data) {
+                    // Filter out duplicates (if activeModel is already in the list)
+                    const filteredModels = googleModels.data.filter(m => m.id !== activeModel);
+                    allModels.data.push(...filteredModels);
+                }
+            } catch (err) {
+                console.error('[API] Could not fetch Google models:', err.message);
             }
         }
 
@@ -1193,8 +1261,9 @@ app.post('/v1/messages', async (req, res) => {
         // ================= PER-SESSION MODEL (VIA HEADER) =================
         // Check for X-Session-ID header - allows each window/terminal to use different models
         const sessionId = req.headers['x-session-id'];
+        let sessionModel = null;
         if (sessionId && sessionModels.has(sessionId)) {
-            const sessionModel = getSessionModel(sessionId);
+            sessionModel = getSessionModel(sessionId);
             console.log(`[API] Per-session model for ${sessionId.slice(0, 8)}: ${sessionModel}`);
             resolvedModel = sessionModel;
         }
@@ -1243,15 +1312,15 @@ app.post('/v1/messages', async (req, res) => {
             }
         } catch (e) { }
 
-        // If header override was used, use that; otherwise use smart routing
+        // Precedence: X-Override-Model header, then the X-Session-ID session model, then smart routing
         resolvedModel = headerOverrideModel
             ? resolveModelAlias(headerOverrideModel)
-            : (resolveModelAlias(model) || 'gemini-3-flash');
+            : (sessionModel || resolveModelAlias(model) || 'gemini-3-flash');
 
         // Check if extension is sending the Custom model value (from settings.json)
         const isUsingCustomModel = settingsCustomModel && resolvedModel === settingsCustomModel;
 
-        if (!headerOverrideModel) {
+        if (!headerOverrideModel && !sessionModel) {
             // ================= LAST-CHANGE-WINS LOGIC =================
             // Status bar/dashboard sets globalModelOverride and syncs to settings.json
             // Claude Code reads settings.json for Custom model value

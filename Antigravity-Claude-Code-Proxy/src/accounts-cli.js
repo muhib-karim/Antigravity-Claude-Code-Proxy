@@ -23,6 +23,7 @@ import { ACCOUNT_CONFIG_PATH, DEFAULT_PORT, MAX_ACCOUNTS } from './constants.js'
 import {
     getAuthorizationUrl,
     startCallbackServer,
+    closeCallbackServer,
     completeOAuthFlow,
     refreshAccessToken,
     getUserEmail
@@ -149,7 +150,7 @@ function saveAccounts(accounts, settings = {}) {
             activeIndex: 0
         };
 
-        writeFileSync(ACCOUNT_CONFIG_PATH, JSON.stringify(config, null, 2));
+        writeFileSync(ACCOUNT_CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 });
         console.log(`\n✓ Saved ${accounts.length} account(s) to ${ACCOUNT_CONFIG_PATH}`);
     } catch (error) {
         console.error('Error saving accounts:', error.message);
@@ -431,6 +432,8 @@ async function main() {
         }
     } finally {
         rl.close();
+        // The OAuth callback server keeps the event loop alive; release it so the CLI exits
+        closeCallbackServer();
     }
 }
 

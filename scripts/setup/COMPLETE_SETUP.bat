@@ -68,7 +68,7 @@ echo Sign in, grant permissions, then close the browser.
 echo.
 pause
 echo.
-cd /d "%~dp0antigravity-claude-proxy-main"
+cd /d "%~dp0..\..\Antigravity-Claude-Code-Proxy"
 npm run accounts:add
 echo.
 echo Account added! You can add more accounts by running this option again.
@@ -94,7 +94,7 @@ echo Starting proxy with PM2 (runs in background)...
 cd /d "%~dp0..\..\Antigravity-Claude-Code-Proxy"
 pm2 stop antigravity-proxy 2>nul
 pm2 delete antigravity-proxy 2>nul
-pm2 start src/server.js --name antigravity-proxy
+pm2 start src/index.js --name antigravity-proxy
 pm2 save
 echo.
 echo ================================================================
@@ -120,7 +120,7 @@ echo ================================================================
 echo.
 echo Checking configured accounts...
 echo.
-cd /d "%~dp0antigravity-claude-proxy-main"
+cd /d "%~dp0..\..\Antigravity-Claude-Code-Proxy"
 npm run accounts:list
 echo.
 echo ================================================================

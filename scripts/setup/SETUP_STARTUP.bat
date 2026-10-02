@@ -25,8 +25,8 @@ set "SCRIPT_DIR=%~dp0"
 set "PROXY_DIR=%SCRIPT_DIR%..\..\Antigravity-Claude-Code-Proxy"
 
 :: Check if proxy directory exists
-if not exist "%PROXY_DIR%\src\server.js" (
-    echo ERROR: Could not find server.js at %PROXY_DIR%\src\server.js
+if not exist "%PROXY_DIR%\src\index.js" (
+    echo ERROR: Could not find index.js at %PROXY_DIR%\src\index.js
     echo Please run this script from the scripts\setup folder.
     pause
     exit /b 1
@@ -41,7 +41,7 @@ pm2 delete antigravity-proxy 2>nul
 echo.
 echo Starting proxy with PM2...
 cd /d "%PROXY_DIR%"
-pm2 start src/server.js --name antigravity-proxy
+pm2 start src/index.js --name antigravity-proxy
 
 :: Save PM2 process list
 echo.

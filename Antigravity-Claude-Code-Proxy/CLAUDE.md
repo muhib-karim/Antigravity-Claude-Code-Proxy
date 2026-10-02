@@ -26,8 +26,11 @@ npm run accounts:add     # Add a new Google account via OAuth
 npm run accounts:list    # List configured accounts
 npm run accounts:verify  # Verify account tokens are valid
 
-# Run all tests (server must be running on port 8080)
+# Offline smoke tests (spawn the proxy against a mock upstream; no accounts needed)
 npm test
+
+# Run all live tests (server must be running on port 8080 with a real account)
+npm run test:live
 
 # Run individual tests
 npm run test:signatures    # Thinking signatures
@@ -78,8 +81,9 @@ Claude Code CLI → Express Server (server.js) → CloudCode Client → Antigrav
 
 ## Testing Notes
 
-- Tests require the server to be running (`npm start` in separate terminal)
-- Tests are CommonJS files (`.cjs`) that make HTTP requests to the local proxy
+- `npm test` runs the offline suite in `tests/smoke/` with `node --test`; it starts the proxy itself against a mock Cloud Code server (`CLOUDCODE_ENDPOINTS`)
+- Live tests require the server to be running (`npm start` in separate terminal)
+- Live tests are CommonJS files (`.cjs`) that make HTTP requests to the local proxy
 - Shared test utilities are in `tests/helpers/http-client.cjs`
 - Test runner supports filtering: `node tests/run-all.cjs <filter>` to run matching tests
 

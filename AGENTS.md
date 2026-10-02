@@ -16,8 +16,12 @@ npm run accounts:add           # Add new Google account via OAuth
 npm run accounts:list          # List configured accounts
 npm run accounts:verify        # Verify account tokens
 
-# Testing (server must be running)
-npm test                       # All tests
+# Offline tests (mock upstream, no server or accounts needed)
+npm test
+npm run lint
+
+# Live tests (server must be running with a real account)
+npm run test:live              # All live tests
 npm run test:signatures        # Thinking signatures
 npm run test:multiturn         # Multi-turn with tools
 npm run test:streaming         # Streaming SSE events

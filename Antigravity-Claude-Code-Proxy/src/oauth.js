@@ -73,6 +73,7 @@ const pendingFlows = new Map(); // state -> { verifier, resolve, reject, timeout
 
 // Force close the callback server and clear all flows
 export function closeCallbackServer() {
+    if (!persistentServer && pendingFlows.size === 0) return;
     console.log('[OAuth] Closing callback server and clearing all flows');
     // Clear all pending flow timeouts
     for (const [state, flow] of pendingFlows) {
@@ -88,6 +89,12 @@ export function closeCallbackServer() {
         }
         persistentServer = null;
     }
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
 }
 
 // Ensure the persistent callback server is running
@@ -141,7 +148,7 @@ function ensurePersistentServer() {
                 <head><title>Authentication Failed</title></head>
                 <body style="font-family: system-ui; padding: 40px; text-align: center; background: #1a1a2e; color: #fff;">
                     <h1 style="color: #dc3545;">❌ Authentication Failed</h1>
-                    <p>Error: ${error}</p>
+                    <p>Error: ${escapeHtml(error)}</p>
                     <p style="color: #888;">You can close this window and try again.</p>
                     <script>setTimeout(() => window.close(), 3000);</script>
                 </body>
@@ -229,6 +236,12 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
  * @param {string} verifier - PKCE code verifier
  * @returns {Promise<{accessToken: string, refreshToken: string, expiresIn: number}>} OAuth tokens
  */
+function requireClientSecret() {
+    if (!OAUTH_CONFIG.clientSecret) {
+        throw new Error('GOOGLE_OAUTH_CLIENT_SECRET is not set. Set it (with GOOGLE_OAUTH_CLIENT_ID if you use your own OAuth app) before adding or refreshing Google accounts.');
+    }
+}
+
 export async function exchangeCode(code, verifier) {
     const response = await fetch(OAUTH_CONFIG.tokenUrl, {
         method: 'POST',
@@ -237,7 +250,7 @@ export async function exchangeCode(code, verifier) {
         },
         body: new URLSearchParams({
             client_id: OAUTH_CONFIG.clientId,
-            client_secret: OAUTH_CONFIG.clientSecret,
+            client_secret: (requireClientSecret(), OAUTH_CONFIG.clientSecret),
             code: code,
             code_verifier: verifier,
             grant_type: 'authorization_code',
@@ -281,7 +294,7 @@ export async function refreshAccessToken(refreshToken) {
         },
         body: new URLSearchParams({
             client_id: OAUTH_CONFIG.clientId,
-            client_secret: OAUTH_CONFIG.clientSecret,
+            client_secret: (requireClientSecret(), OAUTH_CONFIG.clientSecret),
             refresh_token: refreshToken,
             grant_type: 'refresh_token'
         })

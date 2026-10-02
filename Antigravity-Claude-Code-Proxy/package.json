@@ -26,7 +26,8 @@
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
-    "test": "node tests/run-all.cjs",
+    "test": "node --test tests/smoke/format.test.mjs tests/smoke/account-manager.test.mjs tests/smoke/server.test.mjs",
+    "test:live": "node tests/run-all.cjs",
     "test:signatures": "node tests/test-thinking-signatures.cjs",
     "test:multiturn": "node tests/test-multiturn-thinking-tools.cjs",
     "test:streaming": "node tests/test-multiturn-thinking-tools-streaming.cjs",
@@ -59,14 +60,14 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.18.2",
-    "pino": "^9.5.0",
-    "pino-pretty": "^13.0.0",
     "puppeteer": "^24.34.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "eslint": "^9.17.0",
+    "globals": "^14.0.0",
     "prettier": "^3.4.2"
   }
 }

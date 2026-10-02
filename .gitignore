@@ -76,3 +76,11 @@ test_message.json
 Claude-Proxy-Extension-TRASH/
 Claude-Proxy-Extension-BROKEN/
 Claude-Proxy-Extension-TRASH2/
+
+# Test / coverage output
+coverage/
+.nyc_output/
+*.tgz
+target/
+out/
+*.apk

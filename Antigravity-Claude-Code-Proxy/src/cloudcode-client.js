@@ -159,7 +159,7 @@ function parseResetTime(responseOrError, errorText = '') {
         const msg = (responseOrError instanceof Error ? responseOrError.message : errorText) || '';
 
         // Try to extract "retry-after-ms" or "retryDelay" - check seconds format first (e.g. "7739.23s")
-        const secMatch = msg.match(/(?:retry[-_]?after[-_]?ms|retryDelay)[:\s"]+([\d\.]+)(?:s\b|s")/i);
+        const secMatch = msg.match(/(?:retry[-_]?after[-_]?ms|retryDelay)[:\s"]+([\d.]+)(?:s\b|s")/i);
         if (secMatch) {
             resetMs = Math.ceil(parseFloat(secMatch[1]) * 1000);
             console.log(`[CloudCode] Parsed retry seconds from body (precise): ${resetMs}ms`);
@@ -294,6 +294,11 @@ export async function sendMessage(anthropicRequest, accountManager) {
     // Ensure we try at least as many times as there are accounts to cycle through everyone
     // +1 to ensure we hit the "all accounts rate-limited" check at the start of the next loop
     const maxAttempts = Math.max(MAX_RETRIES, accountManager.getAccountCount() + 1);
+
+    // With no accounts at all there is nothing to wait for - fail fast instead of sleeping on a cooldown
+    if (accountManager.getAccountCount() === 0) {
+        throw new Error('No accounts available. Add a Google account with "npm run accounts:add" or sign in to Antigravity.');
+    }
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         // Use sticky account selection for cache continuity
@@ -582,6 +587,11 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
     // Ensure we try at least as many times as there are accounts to cycle through everyone
     // +1 to ensure we hit the "all accounts rate-limited" check at the start of the next loop
     const maxAttempts = Math.max(MAX_RETRIES, accountManager.getAccountCount() + 1);
+
+    // With no accounts at all there is nothing to wait for - fail fast instead of sleeping on a cooldown
+    if (accountManager.getAccountCount() === 0) {
+        throw new Error('No accounts available. Add a Google account with "npm run accounts:add" or sign in to Antigravity.');
+    }
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         // Use sticky account selection for cache continuity
@@ -938,7 +948,8 @@ async function* streamSSEResponse(response, originalModel) {
                 if (firstCandidate.finishReason) {
                     if (firstCandidate.finishReason === 'MAX_TOKENS') {
                         stopReason = 'max_tokens';
-                    } else if (firstCandidate.finishReason === 'STOP') {
+                    } else if (firstCandidate.finishReason === 'STOP' && stopReason !== 'tool_use') {
+                        // Gemini reports STOP for function calls too - keep tool_use so the client runs the tool
                         stopReason = 'end_turn';
                     }
                 }
