@@ -4,15 +4,12 @@
  * Uses puppeteer-extra with stealth plugin to avoid bot detection
  */
 
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { loadBrowser } from './browser-loader.js';
 import { join } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 import { PerplexitySessionAccountManager } from './perplexity-session-account-manager.js';
 
-// Add stealth plugin to avoid bot detection
-puppeteer.use(StealthPlugin());
 
 const PERPLEXITY_URL = 'https://www.perplexity.ai';
 const SESSION_COOKIE_NAME = '__Secure-next-auth.session-token';
@@ -39,7 +36,7 @@ export class PerplexityBrowserLogin {
 
         try {
             // Launch browser with persistent profile and stealth mode
-            this.browser = await puppeteer.launch({
+            this.browser = await (await loadBrowser()).launch({
                 headless: false, // Show the browser window
                 defaultViewport: null, // Use full window size
                 userDataDir: USER_DATA_DIR, // Persist session data
