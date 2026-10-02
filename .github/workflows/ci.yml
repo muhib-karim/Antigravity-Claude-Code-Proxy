@@ -35,3 +35,30 @@ jobs:
 
       - name: Test (offline, mocked upstream)
         run: npm test
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history and working tree)
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /tmp gitleaks
+          /tmp/gitleaks git --no-banner --redact .
+          /tmp/gitleaks dir --no-banner --redact .
+
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Antigravity-Claude-Code-Proxy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: npm audit (runtime dependencies)
+        run: npm audit --package-lock-only --omit=dev --audit-level=high
