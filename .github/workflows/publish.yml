@@ -25,7 +25,7 @@ jobs:
       - name: Clone extension repo
         run: |
           rm -rf claude-proxy-ext-src
-          git clone https://github.com/ai-dev-2024/Claude-Proxy-Extension.git claude-proxy-ext-src
+          git clone https://github.com/muhib-karim/Claude-Proxy-Extension.git claude-proxy-ext-src
           echo "Cloned extension repo"
           ls -la claude-proxy-ext-src/
 
@@ -92,7 +92,19 @@ jobs:
         working-directory: claude-proxy-ext-src
         run: npx @vscode/vsce package
 
+      - name: Check whether this extension version is already on Open VSX
+        id: ovsx_check
+        run: |
+          EXT_VERSION=${{ steps.ext_version.outputs.EXT_VERSION }}
+          if curl -sf "https://open-vsx.org/api/ai-dev-2024/claude-proxy-status/$EXT_VERSION" > /dev/null; then
+            echo "Extension v$EXT_VERSION is already published; skipping Open VSX upload"
+            echo "PUBLISHED=true" >> $GITHUB_OUTPUT
+          else
+            echo "PUBLISHED=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish to Open VSX
+        if: steps.ovsx_check.outputs.PUBLISHED != 'true'
         working-directory: claude-proxy-ext-src
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
