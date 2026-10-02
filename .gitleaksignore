@@ -1,0 +1,10 @@
+# Historical findings only. These four fingerprints are the Google OAuth
+# installed-app client secret that the upstream open-source project
+# (badrisnarayanan/antigravity-claude-proxy) publishes in its own source. It is
+# not a credential of this repository's owner. It was removed from the code in
+# PR #7 and is now read from GOOGLE_OAUTH_CLIENT_SECRET (see .env.example).
+# History is not rewritten; any NEW finding still fails CI.
+6b2efc4d2258798f33aae9e191df2cd2e724c027:antigravity-claude-proxy-main/versions/v1-cli-working/constants.js.backup:generic-api-key:267
+6b2efc4d2258798f33aae9e191df2cd2e724c027:antigravity-claude-proxy-main/versions/v3-smart-routing/src/constants.js:generic-api-key:267
+abae92814b76415139fc7112643bcb79bf9ccc4c:antigravity-claude-proxy-main/src/constants.js:generic-api-key:184
+8fed0ea9d462c6e3c78a8a206f710e92269f3bad:antigravity-claude-proxy-main/src/constants.js:generic-api-key:132

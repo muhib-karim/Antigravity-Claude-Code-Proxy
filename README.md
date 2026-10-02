@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy"><img src="https://img.shields.io/badge/Proxy-v2.9.4-blue?style=for-the-badge" alt="Proxy v2.9.4"></a>
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy"><img src="https://img.shields.io/badge/Proxy-v2.10.0-blue?style=for-the-badge" alt="Proxy v2.10.0"></a>
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/muhib-karim/Antigravity-Claude-Code-Proxy/ci.yml?branch=main&label=CI&style=for-the-badge" alt="CI"></a>
   <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status"><img src="https://img.shields.io/badge/Extension-v4.3.0-purple?style=for-the-badge" alt="Extension v4.3.0"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Compatible-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code Compatible">
   <img src="https://img.shields.io/badge/Antigravity-Powered-00D4AA?style=for-the-badge" alt="Antigravity Powered">
@@ -136,7 +137,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy.git
+git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git
 cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
 
 # Install dependencies
@@ -152,7 +153,7 @@ pm2 save
 
 ### Add an Account
 
-Google sign-in needs an OAuth client secret, which is not stored in this repository. Set it first (in your shell or a `.env` file next to `package.json`):
+Google sign-in needs an OAuth client secret, which is not stored in this repository. Set it first, in your shell or in a `.env` file next to `package.json` (copy `.env.example`, which lists every setting):
 
 ```bash
 export GOOGLE_OAUTH_CLIENT_SECRET="<your OAuth client secret>"
@@ -370,6 +371,8 @@ npm run test:live    # terminal 2
 | `GOOGLE_OAUTH_CLIENT_ID` | built-in client id | OAuth client id, for your own OAuth app |
 | `CLOUDCODE_ENDPOINTS` | Google Cloud Code endpoints | Comma-separated upstream override (the tests point this at a mock server) |
 
+> Perplexity browser login needs the optional browser packages: `npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth`. Without them the proxy runs normally and only that feature reports an install hint.
+>
 > Perplexity models are served through a separate Python server on `localhost:8000` that is not part of this repository, so they are not covered by the tests.
 
 ---
@@ -379,7 +382,8 @@ npm run test:live    # terminal 2
 - **No credentials in code**: the OAuth client secret comes from `GOOGLE_OAUTH_CLIENT_SECRET` (older revisions embedded it; it is no longer in the source). All sensitive data stored locally; account files are written with owner-only permissions (`0600`)
 - **Comprehensive .gitignore**: Accounts, tokens, logs excluded
 - **Local-only**: Binds to `127.0.0.1` by default. Requests from other websites (foreign `Origin` headers) and, while bound to loopback, requests with a non-local `Host` header (DNS rebinding) are refused
-- **npm audit**: 4 high-severity advisories remain in Puppeteer's browser download chain (`extract-zip` via `@puppeteer/browsers`); fixing them needs a Puppeteer major upgrade
+- **npm audit clean**: the headless-browser stack (Puppeteer) is an optional peer dependency used only by Perplexity browser login, so the default install has no known advisories. CI runs `npm audit` and a full-history gitleaks scan on every push
+- **Secrets**: `.env.example` lists every setting; `.env` is git-ignored. A Google OAuth client secret that the upstream project publishes appeared in early history and is allow-listed in `.gitleaksignore`; it is no longer in the source
 
 See [SECURITY.md](SECURITY.md) for full security policy.
 
@@ -389,6 +393,7 @@ See [SECURITY.md](SECURITY.md) for full security policy.
 
 | Version | Type | Features |
 |---------|------|----------|
+| **v2.10** | Extension v4.3.0 | **Offline tests + CI**, security hardening, optional browser stack, `npm audit` clean |
 | **v2.9** | Extension v4.3.0 | **Opt-in auto-start**, proxy disabled by default |
 | **v2.7** | Extension v4.1.1 | Per-window model selection, workspace persistence |
 | **v2.6** | Extension | Per-session isolation, sessions dashboard |
@@ -417,8 +422,8 @@ This project is built on [antigravity-claude-proxy](https://github.com/badrisnar
 <p align="center">
   <strong>Made with ❤️ for the Claude Code community</strong>
   <br>
-  <a href="https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy/issues">Report Bug</a> •
-  <a href="https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy/issues">Request Feature</a>
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Report Bug</a> •
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Request Feature</a>
 </p>
 
 <br>

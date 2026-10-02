@@ -4,13 +4,10 @@
  * This bypasses TLS fingerprinting that blocks Node.js fetch
  */
 
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { loadBrowser } from './browser-loader.js';
 import { join } from 'path';
 import { homedir } from 'os';
 
-// Add stealth plugin
-puppeteer.use(StealthPlugin());
 
 const PERPLEXITY_URL = 'https://www.perplexity.ai';
 const API_URL = 'https://www.perplexity.ai/rest/sse/perplexity_ask';
@@ -54,7 +51,7 @@ class PerplexityBrowserClient {
     async _doInitialize() {
         console.log('[PerplexityBrowser] Launching headless browser...');
 
-        this.browser = await puppeteer.launch({
+        this.browser = await (await loadBrowser()).launch({
             headless: 'new', // Use new headless mode
             userDataDir: USER_DATA_DIR, // Reuse persistent session
             args: [

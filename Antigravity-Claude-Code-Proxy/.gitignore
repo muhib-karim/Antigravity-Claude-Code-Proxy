@@ -24,6 +24,7 @@ tests/utils/*.jpeg
 # Environment and secrets
 .env
 .env.*
+!.env.example
 *.local
 
 # Build output

@@ -25,6 +25,7 @@ tests/utils/*.jpeg
 # Environment and secrets
 .env
 .env.*
+!.env.example
 *.local
 claude-proxy-ext-src/.env
 perplexity-openai-api-ref/.env

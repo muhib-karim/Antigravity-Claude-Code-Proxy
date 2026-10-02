@@ -25,7 +25,7 @@ jobs:
       - name: Clone extension repo
         run: |
           rm -rf claude-proxy-ext-src
-          git clone https://github.com/ai-dev-2024/Claude-Proxy-Extension.git claude-proxy-ext-src
+          git clone https://github.com/muhib-karim/Claude-Proxy-Extension.git claude-proxy-ext-src
           echo "Cloned extension repo"
 
       - name: Setup Node.js

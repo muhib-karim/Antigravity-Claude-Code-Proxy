@@ -15,6 +15,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 # Version 2.x — Extension + Proxy
 
+## [2.10.0] - 2026-10-03
+
+### Added
+- Offline test suite (`node:test`): the real proxy runs against a mock Cloud Code server in a temp home, so `npm test` needs no accounts or network. The live suite moved to `npm run test:live`.
+- GitHub Actions CI: lint and tests on Node 20 and 22, `npm audit` on runtime dependencies, and a gitleaks scan of the full history and working tree.
+- `.env.example` documenting every setting; `HOST`, `PROXY_STATE_DIR`, `CORS_ALLOWED_ORIGINS` and `CLOUDCODE_ENDPOINTS` settings.
+
+### Fixed
+- Gemini function calls now return `stop_reason: tool_use` (streaming and non-streaming), so Claude Code tool loops continue.
+- Per-session model selection (`X-Session-ID`) is no longer overwritten.
+- With no accounts, `/v1/messages` fails fast with a clear error instead of hanging; `/v1/models` survives an upstream listing failure.
+- A malformed `accounts.json` is no longer overwritten; transient token-refresh errors rotate to the next account instead of invalidating it.
+- Windows setup scripts and the PM2 entry point pointed at the wrong paths.
+
+### Security
+- Binds to `127.0.0.1` by default; foreign `Origin` requests and non-local `Host` headers (DNS rebinding) are refused.
+- Model names are validated before being written to editor `settings.json`; dashboard and OAuth error page escape server-provided values (XSS).
+- Account, session and `.env` files are written with mode `0600`.
+- The Google OAuth client secret is read from `GOOGLE_OAUTH_CLIENT_SECRET` instead of being embedded in source.
+- Puppeteer (used only by Perplexity browser login) is now an optional peer dependency loaded on first use: the default install drops 148 packages and `npm audit` goes from 8 high advisories to 0.
+
+---
+
 ## [2.9.0] - 2026-01-25
 
 ### Extension v4.3.0
