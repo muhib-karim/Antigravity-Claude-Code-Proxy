@@ -106,7 +106,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy.git
+git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git
 cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
 
 # Install dependencies
@@ -277,8 +277,8 @@ This project is built on [antigravity-claude-proxy](https://github.com/badrisnar
 <p align="center">
   <strong>Made with ❤️ for the Claude Code community</strong>
   <br>
-  <a href="https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy/issues">Report Bug</a> •
-  <a href="https://github.com/ai-dev-2024/Antigravity-Claude-Code-Proxy/issues">Request Feature</a>
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Report Bug</a> •
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Request Feature</a>
 </p>
 
 <br>
