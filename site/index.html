@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antigravity Claude Code Proxy: many models behind Claude Code</title>
+<meta name="description" content="A local proxy that lets Claude Code use Gemini, GPT, Grok, Claude and more, with managed sessions, failover, a live dashboard and an IDE status bar.">
+<meta property="og:title" content="Antigravity Claude Code Proxy">
+<meta property="og:description" content="Use 20+ models from Claude Code through one local proxy, with failover, a dashboard and a status bar.">
+<meta property="og:image" content="images/banner.png">
+<style>
+:root{--bg:#0b0d12;--card:#141824;--line:#232a3b;--fg:#e7eaf2;--mut:#9aa3b8;--acc:#00d4aa;--acc2:#7c5cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--acc)}.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header{padding:28px 0 8px}.hero img{width:100%;border-radius:14px;border:1px solid var(--line)}
+h1{font-size:clamp(28px,4vw,44px);margin:28px 0 8px;line-height:1.15}h2{margin:48px 0 12px;font-size:26px}
+.lead{color:var(--mut);font-size:19px;max-width:760px}
+.btns{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0}.btn{padding:11px 18px;border-radius:10px;text-decoration:none;font-weight:600;border:1px solid var(--line);color:var(--fg)}
+.btn.p{background:linear-gradient(90deg,var(--acc),var(--acc2));color:#06110e;border:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card b{display:block;margin-bottom:4px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:#0f131c;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-size:14px}
+figure{margin:0}figure img{width:100%;border-radius:10px;border:1px solid var(--line);background:#0f131c}figcaption{color:var(--mut);font-size:14px;margin-top:6px}
+.flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.flow span{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+footer{color:var(--mut);padding:40px 0;border-top:1px solid var(--line);margin-top:56px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero"><img src="images/banner.png" alt="Antigravity Claude Code Proxy banner"></header>
+<h1>Run Claude Code on 20+ models.</h1>
+<p class="lead">A local proxy at <code>localhost:8080</code> that speaks the Anthropic Messages API, so Claude Code can use Gemini, GPT, Grok, Claude, Kimi and Perplexity search models, with managed sessions, automatic failover, a live dashboard and a status bar in your IDE.</p>
+<div class="btns">
+<a class="btn p" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#-quick-start">Quick start</a>
+<a class="btn" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/releases/latest">Latest release</a>
+<a class="btn" href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status">Status bar extension</a>
+<a class="btn" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy">Source on GitHub</a>
+</div>
+
+<h2>How it works</h2>
+<div class="flow"><span>Claude Code CLI / extension</span>→<span>Antigravity proxy · localhost:8080</span>→<span>Google AI (Gemini) · Perplexity · more</span></div>
+
+<h2>Features</h2>
+<div class="grid">
+<div class="card"><b>Multi-provider</b><p>Gemini, GPT, Grok, Claude, Kimi and more through one Anthropic-compatible endpoint.</p></div>
+<div class="card"><b>Session failover</b><p>Keeps requests on a stable signed-in session and moves to another when one is unavailable.</p></div>
+<div class="card"><b>Live dashboard</b><p>Accounts, usage and one-click model switching at <code>localhost:8080/dashboard</code>.</p></div>
+<div class="card"><b>IDE status bar</b><p>Current model and quotas with reset times, right in VS Code or Antigravity.</p></div>
+<div class="card"><b>Agentic fallback</b><p>Chat-only models switch to an agentic model automatically when tools are needed.</p></div>
+<div class="card"><b>Offline test suite</b><p>Lint and tests run in CI on Node 20 and 22 with no accounts, keys or network.</p></div>
+</div>
+
+<h2>Showcase</h2>
+<div class="grid">
+<figure><img src="images/dashboard.png" alt="Dashboard" loading="lazy"><figcaption>Dashboard: session health and usage</figcaption></figure>
+<figure><img src="images/quota-popup.png" alt="Quota popup" loading="lazy"><figcaption>Quotas with reset times</figcaption></figure>
+<figure><img src="images/model-switcher.png" alt="Model switcher" loading="lazy"><figcaption>One-click model switching</figcaption></figure>
+</div>
+
+<h2>Quick start</h2>
+<pre><code>git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git
+cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
+npm install
+export GOOGLE_OAUTH_CLIENT_SECRET="&lt;your OAuth client secret&gt;"
+npm run accounts:add          # Google sign-in in your browser
+npm start                     # proxy on http://localhost:8080
+
+export ANTHROPIC_BASE_URL="http://localhost:8080"
+export ANTHROPIC_API_KEY="antigravity-proxy"
+claude                        # Claude Code now goes through the proxy</code></pre>
+
+<h2>Docs</h2>
+<div class="grid">
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/docs/QUICK_START.md">Quick start</a></b><p>The shortest path to a working setup.</p></div>
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/docs/STEP_BY_STEP_SETUP.md">Step-by-step setup</a></b><p>Every step, with checks along the way.</p></div>
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/docs/MULTI_GOOGLE_AI_ACCOUNTS_SETUP.md">Multiple accounts</a></b><p>Add more Google AI accounts for failover.</p></div>
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/SECURITY.md">Security</a></b><p>How credentials are stored and what never leaves your machine.</p></div>
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/CHANGELOG.md">Changelog</a></b><p>What changed in each release.</p></div>
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#-api-reference">API reference</a></b><p>Endpoints the proxy exposes.</p></div>
+</div>
+
+<footer>MIT licensed · <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy">GitHub</a> · <a href="https://ko-fi.com/ai_dev_2024">Support on Ko-fi</a></footer>
+</div>
+</body>
+</html>
