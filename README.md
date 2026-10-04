@@ -439,3 +439,22 @@ This project is built on [antigravity-claude-proxy](https://github.com/badrisnar
     <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me A Coffee" height="50">
   </a>
 </p>
+
+## Architecture
+
+```mermaid
+flowchart LR
+  CC[Claude Code / any Anthropic client] -->|Messages API + SSE| SRV[server.js<br/>local Express gateway]
+  SRV --> FMT[format/<br/>request + response converters,<br/>schema sanitizer, thinking utils]
+  FMT --> AM[account-manager.js<br/>OAuth accounts, rotation, cool-downs]
+  AM --> G[cloudcode-client.js<br/>Gemini models]
+  AM --> P[perplexity-*-client.js<br/>Perplexity models]
+  G --> FMT
+  P --> FMT
+  SRV --> DASH[public/dashboard.html<br/>accounts, usage, health]
+```
+
+- The gateway speaks the Anthropic Messages API, so Claude Code needs only `ANTHROPIC_BASE_URL` pointed at it.
+- `format/` translates requests and streamed responses both ways, including tool calls and thinking blocks.
+- `account-manager.js` spreads requests across signed-in accounts and backs off from rate-limited ones.
+- `bin/cli.js` and `scripts/doctor.js` handle start-up, account login and self-checks.
