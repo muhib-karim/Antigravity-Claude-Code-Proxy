@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy"><img src="https://img.shields.io/badge/Proxy-v2.10.0-blue?style=for-the-badge" alt="Proxy v2.10.0"></a>
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy"><img src="https://img.shields.io/badge/Proxy-v4.1.0-blue?style=for-the-badge" alt="Proxy v4.1.0"></a>
   <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/muhib-karim/Antigravity-Claude-Code-Proxy/ci.yml?branch=main&label=CI&style=for-the-badge" alt="CI"></a>
   <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status"><img src="https://img.shields.io/badge/Extension-v4.3.0-purple?style=for-the-badge" alt="Extension v4.3.0"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Compatible-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code Compatible">
@@ -50,6 +50,12 @@
 </p>
 
 ---
+
+## Verification scope
+
+CI runs lint and offline tests on Node 20 and 22 using mocked upstreams, plus secret scanning and a runtime dependency audit. Those checks do not establish current access to every remote model or account. Provider names and model identifiers can change; verify the configured provider before relying on it.
+
+The gateway runs locally, but prompts and code sent for inference are forwarded to the configured provider. Account credentials, OAuth setup and provider quotas are your responsibility. Do not publish credentials, logs with tokens, or real account screenshots in a public issue. A static showcase or mocked test is not a live-provider benchmark.
 
 ## 📖 What is this?
 
