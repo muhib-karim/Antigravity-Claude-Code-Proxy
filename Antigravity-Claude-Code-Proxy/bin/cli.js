@@ -98,7 +98,7 @@ async function main() {
 
     default:
       console.error(`Unknown command: ${command}`);
-      console.error('Run "antigravity-proxy --help" for usage information.');
+      console.error('Run "antigravity-claude-proxy --help" for usage information.');
       process.exit(1);
   }
 }

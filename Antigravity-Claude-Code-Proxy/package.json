@@ -26,7 +26,7 @@
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
-    "test": "node --test tests/smoke/format.test.mjs tests/smoke/account-manager.test.mjs tests/smoke/server.test.mjs tests/smoke/browser-loader.test.mjs",
+    "test": "node --test tests/smoke/format.test.mjs tests/smoke/content-converter.test.mjs tests/smoke/thinking-utils.test.mjs tests/smoke/cli.test.mjs tests/smoke/account-manager.test.mjs tests/smoke/server.test.mjs tests/smoke/browser-loader.test.mjs",
     "test:live": "node tests/run-all.cjs",
     "test:signatures": "node tests/test-thinking-signatures.cjs",
     "test:multiturn": "node tests/test-multiturn-thinking-tools.cjs",
@@ -46,11 +46,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/badri-s2001/antigravity-claude-proxy.git"
+    "url": "git+https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git"
   },
-  "homepage": "https://github.com/badri-s2001/antigravity-claude-proxy#readme",
+  "homepage": "https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#readme",
   "bugs": {
-    "url": "https://github.com/badri-s2001/antigravity-claude-proxy/issues"
+    "url": "https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues"
   },
   "engines": {
     "node": ">=18.0.0"

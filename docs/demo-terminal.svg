@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" role="img" aria-label="Terminal session: CLI help and offline test run">
+<rect width="100%" height="100%" rx="10" fill="#0d1117"/>
+<rect width="900" height="34" rx="10" fill="#161b22"/><rect y="24" width="900" height="10" fill="#161b22"/>
+<circle cx="22" cy="17" r="6" fill="#ff5f56"/><circle cx="42" cy="17" r="6" fill="#ffbd2e"/><circle cx="62" cy="17" r="6" fill="#27c93f"/>
+<text x="450" y="22" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">antigravity-claude-proxy (real output)</text>
+<g font-family="Consolas, Menlo, monospace" font-size="14" xml:space="preserve">
+<text x="24" y="56"><tspan fill="#3fb950">$</tspan><tspan fill="#e6edf3"> node bin/cli.js --help</tspan></text>
+<text x="24" y="76" fill="#c9d1d9">antigravity-claude-proxy v4.1.0</text>
+<text x="24" y="96" fill="#c9d1d9"></text>
+<text x="24" y="116" fill="#c9d1d9">Proxy server for using Antigravity&#x27;s Claude models with Claude Code CLI.</text>
+<text x="24" y="136" fill="#c9d1d9"></text>
+<text x="24" y="156" fill="#79c0ff">USAGE:</text>
+<text x="24" y="176" fill="#c9d1d9">  antigravity-claude-proxy &lt;command&gt; [options]</text>
+<text x="24" y="196" fill="#c9d1d9"></text>
+<text x="24" y="216" fill="#79c0ff">COMMANDS:</text>
+<text x="24" y="236" fill="#c9d1d9">  start                 Start the proxy server (default port: 8080)</text>
+<text x="24" y="256" fill="#c9d1d9">  accounts              Manage Google accounts (interactive)</text>
+<text x="24" y="276" fill="#c9d1d9">  accounts add          Add a new Google account via OAuth</text>
+<text x="24" y="296" fill="#c9d1d9">  accounts list         List all configured accounts</text>
+<text x="24" y="316" fill="#c9d1d9">  accounts remove       Remove accounts interactively</text>
+<text x="24" y="336" fill="#c9d1d9">  accounts verify       Verify account tokens are valid</text>
+<text x="24" y="356" fill="#c9d1d9">  accounts clear        Remove all accounts</text>
+<text x="24" y="376" fill="#c9d1d9"></text>
+<text x="24" y="396" fill="#79c0ff">OPTIONS:</text>
+<text x="24" y="416" fill="#c9d1d9">  --help, -h            Show this help message</text>
+<text x="24" y="436" fill="#c9d1d9">  --version, -v         Show version number</text>
+<text x="24" y="456" fill="#c9d1d9"></text>
+<text x="24" y="476"><tspan fill="#3fb950">$</tspan><tspan fill="#e6edf3"> npm test</tspan></text>
+<text x="24" y="496" fill="#c9d1d9">ℹ tests 50</text>
+<text x="24" y="516" fill="#c9d1d9">ℹ suites 17</text>
+<text x="24" y="536" fill="#3fb950">ℹ pass 50</text>
+<text x="24" y="556" fill="#c9d1d9">ℹ fail 0</text>
+</g>
+</svg>

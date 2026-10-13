@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Antigravity Claude Code Proxy: a local multi-provider gateway for Claude Code">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.55" stop-color="#151a3a"/>
+      <stop offset="1" stop-color="#1d0f33"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00d4aa"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#00d4aa" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#00d4aa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="1">
+    <path d="M0 80H1280M0 160H1280M0 240H1280"/>
+    <path d="M160 0V320M320 0V320M480 0V320M640 0V320M800 0V320M960 0V320M1120 0V320"/>
+  </g>
+
+  <!-- Title block -->
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="72" y="128" font-size="22" font-weight="600" fill="#00d4aa" letter-spacing="4">LOCAL AI GATEWAY</text>
+    <text x="72" y="184" font-size="50" font-weight="700" fill="#f5f7ff">Antigravity Claude Code Proxy</text>
+    <rect x="72" y="204" width="120" height="4" rx="2" fill="url(#accent)"/>
+    <text x="72" y="248" font-size="24" fill="#c3c8e6">Run Claude Code on Gemini, Claude and Perplexity models</text>
+  </g>
+
+  <!-- Motif: one client fanning out through the gateway to several providers -->
+  <g transform="translate(900 0)">
+    <g fill="none" stroke="url(#accent)" stroke-width="2.5" stroke-linecap="round">
+      <path d="M40 160H140"/>
+      <path d="M220 160C260 160 270 80 310 80"/>
+      <path d="M220 160H310"/>
+      <path d="M220 160C260 160 270 240 310 240"/>
+    </g>
+    <rect x="0" y="140" width="40" height="40" rx="8" fill="#1f2547" stroke="#8b93c9" stroke-width="2"/>
+    <text x="20" y="166" text-anchor="middle" font-family="Consolas, Menlo, monospace" font-size="16" font-weight="700" fill="#e6e9ff">&gt;_</text>
+    <circle cx="180" cy="160" r="70" fill="url(#glow)"/>
+    <rect x="140" y="120" width="80" height="80" rx="18" fill="#10162e" stroke="#00d4aa" stroke-width="3"/>
+    <text x="180" y="168" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#00d4aa">:8080</text>
+    <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" text-anchor="middle">
+      <circle cx="330" cy="80" r="20" fill="#1a2350" stroke="#4f8cff" stroke-width="2"/>
+      <text x="330" y="85" fill="#9fc0ff">G</text>
+      <circle cx="330" cy="160" r="20" fill="#2a1a45" stroke="#c084fc" stroke-width="2"/>
+      <text x="330" y="165" fill="#e2c6ff">C</text>
+      <circle cx="330" cy="240" r="20" fill="#0f2f2c" stroke="#00d4aa" stroke-width="2"/>
+      <text x="330" y="245" fill="#8ff0dc">P</text>
+    </g>
+  </g>
+</svg>

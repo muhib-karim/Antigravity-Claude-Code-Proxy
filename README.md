@@ -1,467 +1,260 @@
 <p align="center">
-  <img src="docs/images/banner.png" alt="Antigravity Proxy Banner" width="100%" style="border-radius: 10px;">
+  <img src="docs/banner.svg" alt="Antigravity Claude Code Proxy" width="100%">
+</p>
+
+<p align="center"><strong>Run Claude Code on Gemini, Claude and Perplexity models through one local, Anthropic-compatible endpoint.</strong></p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/muhib-karim/Antigravity-Claude-Code-Proxy" alt="License: MIT"></a>
+  <img src="https://img.shields.io/github/languages/top/muhib-karim/Antigravity-Claude-Code-Proxy" alt="Top language">
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/actions/workflows/ci.yml"><img src="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status"><img src="https://img.shields.io/open-vsx/v/ai-dev-2024/claude-proxy-status?label=Open%20VSX" alt="Status bar extension on Open VSX"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy"><img src="https://img.shields.io/badge/Proxy-v4.1.0-blue?style=for-the-badge" alt="Proxy v4.1.0"></a>
-  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/muhib-karim/Antigravity-Claude-Code-Proxy/ci.yml?branch=main&label=CI&style=for-the-badge" alt="CI"></a>
-  <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status"><img src="https://img.shields.io/badge/Extension-v4.3.0-purple?style=for-the-badge" alt="Extension v4.3.0"></a>
-  <img src="https://img.shields.io/badge/Claude_Code-Compatible-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code Compatible">
-  <img src="https://img.shields.io/badge/Antigravity-Powered-00D4AA?style=for-the-badge" alt="Antigravity Powered">
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="MIT License">
-  <a href="https://ko-fi.com/ai_dev_2024"><img src="https://img.shields.io/badge/Support%20Me-Ko--fi-red?style=for-the-badge&logo=ko-fi" alt="Support Me"></a>
-  <a href="https://startup.z.ai/"><img src="https://img.shields.io/badge/Part%20of-ZAI%20Start--up%20Community-8b5cf6?style=for-the-badge" alt="ZAI Community"></a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/VS%20Code-Tested-007ACC?style=flat-square&logo=visual-studio-code" alt="VS Code">
-  <img src="https://img.shields.io/badge/Antigravity-Tested-00D4AA?style=flat-square" alt="Antigravity">
-  <img src="https://img.shields.io/badge/Cursor-Tested-black?style=flat-square" alt="Cursor">
-</p>
-
-<p align="center">
-  <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status">
-    <img src="https://img.shields.io/badge/Install%20Extension-Open%20VSX-brightgreen?style=for-the-badge&logo=visual-studio-code" alt="Install Extension">
-  </a>
-</p>
-
-<h1 align="center">🚀 Antigravity Claude Code Proxy</h1>
-
-<p align="center">
-  Based on <a href="https://github.com/badrisnarayanan/antigravity-claude-proxy">antigravity-claude-proxy</a> by Badri Narayanan S (MIT License).
-</p>
-
-<p align="center">
-  <strong>Use Claude Code CLI with Gemini, GPT-5, Grok, and 20+ AI models</strong>
-  <br><br>
-  <em>A production-ready multi-provider AI gateway with session management and failover,<br>
-  real-time status bar integration, and beautiful monitoring dashboard</em>
-</p>
-
-<p align="center">
-  <a href="#-what-is-this">What is this?</a> •
-  <a href="#-features">Features</a> •
   <a href="https://muhib-karim.github.io/Antigravity-Claude-Code-Proxy/">Website</a> •
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-models">Models</a> •
-  <a href="#-dashboard">Dashboard</a> •
-  <a href="#-status-bar-extension-v39">Status Bar</a> •
-  <a href="#-development--testing">Development</a>
+  <a href="#quick-start">Quick start</a> •
+  <a href="#usage">Usage</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#testing">Testing</a>
 </p>
+
+Based on [antigravity-claude-proxy](https://github.com/badrisnarayanan/antigravity-claude-proxy) by Badri Narayanan S (MIT License).
 
 ---
 
-## Verification scope
+## What it is
 
-CI runs lint and offline tests on Node 20 and 22 using mocked upstreams, plus secret scanning and a runtime dependency audit. Those checks do not establish current access to every remote model or account. Provider names and model identifiers can change; verify the configured provider before relying on it.
+Antigravity Claude Code Proxy is a local Node.js/Express gateway. It speaks the **Anthropic Messages API** (`/v1/messages`, with SSE streaming), so Claude Code and other Anthropic clients only need `ANTHROPIC_BASE_URL` pointed at it. It translates each request into the format the upstream provider expects, sends it with the signed-in account it picked, and translates the response (text, tool calls and thinking blocks) back.
 
-The gateway runs locally, but prompts and code sent for inference are forwarded to the configured provider. Account credentials, OAuth setup and provider quotas are your responsibility. Do not publish credentials, logs with tokens, or real account screenshots in a public issue. A static showcase or mocked test is not a live-provider benchmark.
+### Key features
 
-## 📖 What is this?
+- **Anthropic-compatible API**: `/v1/messages` (streaming and non-streaming), `/v1/messages/count_tokens` and `/v1/models`.
+- **Two-way format translation** (`src/format/`): messages, system prompts, images/documents, tool calls and results, and thinking blocks with signature handling. Also includes a JSON-schema sanitizer for tool definitions the Cloud Code API would otherwise reject.
+- **Multi-account handling**: Google accounts added through OAuth are stored owner-only (`0600`). Requests use a sticky account for caching, accounts are rotated with cool-downs when rate-limited, and requests fail over when a token refresh fails.
+- **Model routing**: 37 built-in short aliases (`flash`, `pro`, `opus`, …), a global model override (`/active-model`), and per-session models via the `X-Session-ID` header (`/session-model`).
+- **Web dashboard** at `/dashboard`: accounts, quotas, usage per model, sessions and model switching.
+- **Local-only by default**: binds to `127.0.0.1` and refuses foreign `Origin` headers and DNS-rebinding style `Host` headers.
+- **CLI** (`bin/cli.js`): start the server and manage accounts (`add`, `list`, `remove`, `verify`, `clear`). `scripts/doctor.js` runs a setup self-check.
+- **Status bar extension** for VS Code-based editors, [published on Open VSX](https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status). It shows the active model and quotas and allows one-click switching.
 
-**Antigravity Claude Proxy** is a local proxy server that enables **Claude Code CLI** to use multiple AI providers:
+> **Verification scope.** CI runs lint and offline tests on Node 20 and 22 using mocked upstreams, plus secret scanning and a runtime dependency audit. Those checks do not establish current access to every remote model or account. Provider names and model identifiers can change; verify the configured provider before relying on it.
+>
+> The gateway runs locally, but prompts and code sent for inference are forwarded to the configured provider. Account credentials, OAuth setup and provider quotas are your responsibility. Do not publish credentials, logs with tokens, or real account screenshots in a public issue. A static showcase or mocked test is not a live-provider benchmark.
 
-| Without Proxy | With Proxy |
-|--------------|------------|
-| Only Claude models | **20+ AI models** (Gemini, GPT-5, Grok, Claude, etc.) |
-| Manual session handling | **Managed sessions with automatic failover** |
-| No monitoring | **Real-time dashboard** |
-| No status | **Status bar integration** |
+### Demo
 
-### How it Works
+Real output from this repository, rendered to SVG (CLI help plus the offline test run):
 
-```
-┌─────────────────┐      ┌──────────────────────┐      ┌─────────────────────┐
-│                 │      │                      │      │                     │
-│  Claude Code    │─────▶│  Antigravity Proxy   │─────▶│  Google AI (Gemini) │
-│  CLI/Extension  │      │  localhost:8080      │      │  + Perplexity       │
-│                 │      │                      │      │  + More providers   │
-└─────────────────┘      └──────────────────────┘      └─────────────────────┘
-```
+<p align="center"><img src="docs/demo-terminal.svg" alt="Terminal session: CLI help and npm test with 50 passing tests" width="760"></p>
+
+<details>
+<summary>Dashboard and status bar screenshots</summary>
+
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="Dashboard" width="700"><br><em>Web dashboard</em><br><br>
+  <img src="docs/images/quota-popup.png" alt="Quota popup" width="600"><br><em>Quota popup in the status bar extension</em><br><br>
+  <img src="docs/images/model-switcher.png" alt="Model switcher" width="400"><br><em>Model switcher</em><br><br>
+  <img src="docs/images/statusbar-icon.png" alt="Status bar" width="300"><br><em>Active model in the editor status bar</em>
+</p>
+</details>
 
 ---
 
-## 🖼️ Showcase
+## Quick start
 
-<p align="center">
-  <img src="docs/images/dashboard.png" alt="Dashboard" width="700">
-  <br>
-  <em>Real-time dashboard with session health and usage stats</em>
-</p>
-
-<p align="center">
-  <img src="docs/images/quota-popup.png" alt="Quota Popup" width="600">
-  <br>
-  <em>Click status bar to see Claude & Gemini quotas with reset times</em>
-</p>
-
-<p align="center">
-  <img src="docs/images/model-switcher.png" alt="Model Switcher" width="400">
-  <br>
-  <em>One-click model switching between Flash, Pro, Opus, Sonnet, and more</em>
-</p>
-
-<p align="center">
-  <img src="docs/images/statusbar-icon.png" alt="Status Bar" width="300">
-  <br>
-  <em>Live model indicator in your IDE status bar (⚡ Flash, 💎 Pro, 🎭 Opus)</em>
-</p>
-
----
-
-## ✨ Features
-
-### 🎯 Core Capabilities
-
-| Feature | Description |
-|---------|-------------|
-| **Multi-Provider Access** | Use Gemini, GPT-5, Grok, Claude, Kimi, and more through one API |
-| **Session Management** | Tracks signed-in sessions, keeps requests on a stable session and fails over when one is unavailable |
-| **Status Bar Integration** | See current model with emoji icons (⚡💎🎭🎵) |
-| **Beautiful Dashboard** | Monitor accounts, usage, and switch models at `localhost:8080` |
-| **Auto-Start** | Proxy starts when extension is enabled (opt-in) |
-| **Model Persistence** | Your selected model survives restarts |
-
-### 🧠 Smart Features
-
-- **🔄 Smart Routing**: Extension dropdown Opus/Haiku/Default pass-through, Custom uses dashboard
-- **⚡ Agentic Fallback**: Chat-only models auto-switch to agentic models for file operations
-- **📊 Usage Tracking**: Per-model and per-account statistics
-- **🛡️ Reliability**: Retries with backoff and routes around unavailable sessions
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Node.js** 18+ (CI runs the tests on Node 20 and 22)
-- **PM2** (optional process manager) - `npm install -g pm2`
-- **Antigravity** desktop app ([Download](https://antigravity.dev)) or VS Code
-- **Claude Code CLI** (`npm install -g @anthropic-ai/claude-code`)
-
-### Installation
+**Requirements:** Node.js 18+ (CI tests on Node 20 and 22), and the [Claude Code CLI](https://www.npmjs.com/package/@anthropic-ai/claude-code). [PM2](https://pm2.keymetrics.io/) is optional, for running the proxy in the background.
 
 ```bash
-# Clone the repository
 git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git
-cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
+cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy   # the npm package lives in this folder
 
-# Install dependencies
-npm install
+# PUPPETEER_SKIP_DOWNLOAD skips Chromium, which only Perplexity browser login needs
+PUPPETEER_SKIP_DOWNLOAD=true npm ci
 
-# Start the proxy in the foreground...
-npm start
-
-# ...or as a persistent background service with PM2
-pm2 start src/index.js --name antigravity-proxy
-pm2 save
+npm start                                  # foreground, http://127.0.0.1:8080
+curl http://localhost:8080/health          # from another terminal
 ```
 
-### Add an Account
+### Add a Google account
 
-Google sign-in needs an OAuth client secret, which is not stored in this repository. Set it first, in your shell or in a `.env` file next to `package.json` (copy `.env.example`, which lists every setting):
+Google sign-in needs an OAuth client secret. It is **not** stored in this repository. Set it in your shell or in a `.env` file next to `package.json` (see `.env.example` for every setting):
 
 ```bash
 export GOOGLE_OAUTH_CLIENT_SECRET="<your OAuth client secret>"
-# optional, if you use your own OAuth app:
-export GOOGLE_OAUTH_CLIENT_ID="<your OAuth client id>"
+export GOOGLE_OAUTH_CLIENT_ID="<your OAuth client id>"   # optional, for your own OAuth app
+
+npm run accounts:add     # opens a Google sign-in in your browser (needs a desktop browser)
+npm run accounts:list
 ```
+
+With no account configured the proxy still starts and `/health` answers, but `/v1/messages` returns a clear "No accounts available" error.
+
+### Point Claude Code at the proxy
 
 ```bash
-npm run accounts:add     # opens a Google sign-in in your browser (needs a desktop browser)
-npm run accounts:list    # show configured accounts
+export ANTHROPIC_BASE_URL="http://localhost:8080"
+export ANTHROPIC_API_KEY="antigravity-proxy"
+claude
 ```
 
-If no account is configured, the proxy still starts and `/health` answers, but `/v1/messages` returns a clear "No accounts available" error.
+On Windows (PowerShell, not verified in CI):
 
-### Configure Environment
-
-**Windows (PowerShell, not verified on Linux CI):**
 ```powershell
 [Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "http://localhost:8080", "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "antigravity-proxy", "User")
 ```
 
-**macOS/Linux:**
-```bash
-echo 'export ANTHROPIC_BASE_URL="http://localhost:8080"' >> ~/.bashrc
-echo 'export ANTHROPIC_API_KEY="antigravity-proxy"' >> ~/.bashrc
-source ~/.bashrc
-```
+Optional background service: `pm2 start src/index.js --name antigravity-proxy && pm2 save`. The Windows batch helpers in `scripts/setup/` (PM2 registration, start-up on login) are Windows-only and are not verified in CI.
 
-### Auto-Start on Windows Login (Optional)
+---
 
-> **Note:** By default, the proxy only starts when you open Antigravity with the extension enabled. For system-wide startup on Windows login, run (Windows-only batch scripts; not verified on Linux):
-
-```batch
-cd scripts\setup
-SETUP_STARTUP.bat
-```
-
-This will:
-- Register the proxy with PM2
-- Create a Windows startup script
-- Proxy starts automatically on Windows login
-
-### Start Using!
+## Usage
 
 ```bash
-claude
+node bin/cli.js --help          # CLI usage
+node bin/cli.js start           # same as npm start; PORT=3000 to change the port
+node bin/cli.js accounts verify # check stored tokens
+npm run doctor                  # setup self-check
 ```
 
-> **Note:** The proxy runs in the background via PM2. You can close any terminal or IDE window without affecting it. To check status: `pm2 list`. To stop: `pm2 stop antigravity-proxy`.
+Switch models from Claude Code with `/model <name or alias>`, or from the dashboard at `http://localhost:8080/dashboard`:
 
----
+| Alias | Resolves to | Notes |
+|-------|-------------|-------|
+| `flash`, `fast`, `haiku` | `gemini-3-flash` | Agentic (tool use) |
+| `pro`, `strong` | `gemini-3-pro-high` | Agentic |
+| `thinking` | `gemini-2.5-flash-thinking` | Agentic |
+| `claude-opus`, `claude-sonnet` | `claude-opus-4-5-thinking`, `claude-sonnet-4-5-thinking` | Agentic, via Google Cloud Code |
+| `opus`, `sonnet`, `grok`, `kimi`, `gpt` | `pplx-*` models | Perplexity, chat only (no tool use) |
+| `sonar`, `research` | `sonar`, `sonar-deep-research` | Perplexity web search, chat only |
 
-## 🤖 Models
+The full alias table is `MODEL_ALIASES` in [`src/constants.js`](Antigravity-Claude-Code-Proxy/src/constants.js). The model list from `/v1/models` is fetched live from the configured accounts.
 
-### ⚡ Agentic Models (Full Capabilities)
+### Main endpoints
 
-| Model | Alias | Best For |
-|-------|-------|----------|
-| `gemini-3-flash` | `flash` | Fast tasks, simple commands |
-| `gemini-3-pro-high` | `pro` | Complex coding, deep analysis |
-| `claude-opus-4-5-thinking` | `claude-opus` | Complex reasoning |
-| `claude-sonnet-4-5-thinking` | `claude-sonnet` | Balanced performance |
-
-> The short aliases `opus` and `sonnet` map to the Perplexity models `pplx-claude-opus` / `pplx-claude-sonnet`, which are chat-only (no tool use).
-
-### 🔍 Search Models (Chat + Web Search)
-
-| Model | Provider | Description |
-|-------|----------|-------------|
-| `pplx-grok` | Perplexity | Grok 4.1 with web search |
-| `pplx-gpt51` | Perplexity | GPT-5.1 chat |
-| `pplx-kimi` | Perplexity | Kimi (Moonshot) |
-| `sonar` | Perplexity | Web search focused |
-
-### Model Switching
-
-```bash
-# In Claude Code chat:
-/model flash        # Switch to Gemini 3 Flash
-/model pro          # Switch to Gemini 3 Pro
-/model grok         # Switch to Grok (Perplexity)
-
-# Or use dashboard:
-# Open http://localhost:8080/dashboard
-```
-
----
-
-## 📊 Dashboard
-
-Access the dashboard at **http://localhost:8080/dashboard**
-
-Features:
-- **Account Monitor**: See all accounts, their status, and remaining quota
-- **Model Switcher**: Quick dropdown to change active model
-- **Usage Statistics**: Track requests per model
-- **Health Status**: See which sessions are healthy or need attention
-
----
-
-## 📊 Status Bar Extension (v3.9+)
-
-The status bar extension shows your current model and quota information in real-time:
-
-### Status Bar Icons
-
-| Icon | Model |
-|------|-------|
-| ⚡ | Gemini Flash |
-| 💎 | Gemini Pro |
-| 🎭 | Claude Opus |
-| 🎵 | Claude Sonnet |
-| 🌐 | Grok |
-| 🔍 | Perplexity/Sonar |
-
-### Quota Popup (Click Account Icon)
-
-- **Model Quotas**: Overall Claude & Gemini percentages with visual bars
-- **Per-Account Breakdown**: All connected accounts with individual quotas
-- **Smart Sorting**: Accounts with highest Claude quota shown first
-- **Reset Times**: Know exactly when your quota resets
-
-### Features
-
-- **One-Click Model Switching**: Click model name to switch instantly
-- **Real-Time Updates**: 5-second polling for accurate quota display
-- **Offline Detection**: Shows "Offline" in red when proxy is down
-- **Open Dashboard**: Quick link to full web dashboard
-
----
-
-## 🔌 API Reference
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/messages` | POST | Anthropic Messages API |
-| `/v1/models` | GET | List available models |
-| `/active-model` | GET/POST/DELETE | Model override control |
-| `/session-model` | POST | Per-session model |
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/messages` | POST | Anthropic Messages API (JSON or SSE) |
+| `/v1/messages/count_tokens` | POST | Token counting |
+| `/v1/models` | GET | Active model plus models available to the configured accounts |
+| `/active-model` | GET / POST / DELETE | Global model override |
+| `/session-model` | POST (`/:sessionId` GET / DELETE) | Per-session model |
+| `/account-limits`, `/model-usage`, `/sessions` | GET | Quotas, usage and sessions for the dashboard |
 | `/dashboard` | GET | Web dashboard |
 | `/health` | GET | Health check |
-| `/account-limits` | GET | Account quotas |
-
----
-
-## 📁 Project Structure
-
-```
-Antigravity-Claude-Code-Proxy/
-├── Antigravity-Claude-Code-Proxy/   # The proxy package (run npm commands here)
-│   ├── src/
-│   │   ├── index.js           # Entry point (starts the HTTP server)
-│   │   ├── server.js          # Express app and routes
-│   │   ├── cloudcode-client.js# Upstream Cloud Code client with retries/failover
-│   │   ├── account-manager.js # Multi-account handling
-│   │   ├── format/            # Anthropic <-> Google format converters
-│   │   ├── constants.js       # Model aliases & config
-│   │   └── public/
-│   │       └── dashboard.html # Web dashboard
-│   ├── tests/
-│   │   ├── smoke/             # Offline tests run by `npm test`
-│   │   └── *.cjs              # Live tests run by `npm run test:live`
-│   └── package.json           # v4.1.0
-├── scripts/                   # Windows setup/startup helpers (.bat/.ps1)
-├── docs/
-│   └── images/                # Showcase images
-├── SECURITY.md                # Security policy
-└── CHANGELOG.md               # Version history
-```
-
----
-
-## 🧪 Development & Testing
-
-Run these from the package folder. They are the same steps CI runs ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-
-```bash
-cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
-
-# Install exact dependencies from the lockfile.
-# PUPPETEER_SKIP_DOWNLOAD=true skips the Chromium download, which is only needed for Perplexity browser login.
-PUPPETEER_SKIP_DOWNLOAD=true npm ci
-
-# Lint (errors fail the build; warnings are reported)
-npm run lint
-
-# Offline test suite (no accounts, keys or network needed)
-npm test
-
-# Run the proxy in the foreground, then check it from another terminal
-npm start
-curl http://localhost:8080/health
-```
-
-`npm test` uses Node's built-in test runner. It starts the real proxy on a free port with a temporary home folder and points it at a mock Cloud Code server. It covers `/health`, `/v1/models`, streaming and non-streaming `/v1/messages`, tool calls, per-session models, the no-account error path, the model-switch endpoints, cross-origin blocking, account-file persistence, and the request/response format converters.
-
-The older end-to-end scripts talk to real models, so they need a running proxy with at least one configured account and are not part of `npm test`:
-
-```bash
-npm start            # terminal 1
-npm run test:live    # terminal 2
-```
 
 ### Configuration
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORT` | `8080` | HTTP port |
-| `HOST` | `127.0.0.1` | Bind address. Only use `0.0.0.0` if you really want other machines to reach the proxy; it has no authentication |
+| `HOST` | `127.0.0.1` | Bind address. The proxy has no authentication, so only use `0.0.0.0` if you really want other machines to reach it |
 | `ACCOUNT_CONFIG_PATH` | `~/.config/antigravity-proxy/accounts.json` | Google account store |
 | `PROXY_STATE_DIR` | package folder | Where `logs/`, `model-override.json` and `session-models.json` are written |
-| `CORS_ALLOWED_ORIGINS` | *(empty)* | Extra comma-separated browser origins allowed to call the proxy (localhost and editor webviews are always allowed). If you set `HOST=0.0.0.0` and open the dashboard via another address, add that address here, e.g. `http://192.168.1.10:8080` |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | *(none; required for Google sign-in and token refresh)* | OAuth client secret. Not stored in the repository |
-| `GOOGLE_OAUTH_CLIENT_ID` | built-in client id | OAuth client id, for your own OAuth app |
+| `CORS_ALLOWED_ORIGINS` | *(empty)* | Extra comma-separated browser origins (localhost and editor webviews are always allowed) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | *(none)* | Required for Google sign-in and token refresh |
+| `GOOGLE_OAUTH_CLIENT_ID` | built-in client id | For your own OAuth app |
 | `CLOUDCODE_ENDPOINTS` | Google Cloud Code endpoints | Comma-separated upstream override (the tests point this at a mock server) |
 
-> Perplexity browser login needs the optional browser packages: `npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth`. Without them the proxy runs normally and only that feature reports an install hint.
->
-> Perplexity models are served through a separate Python server on `localhost:8000` that is not part of this repository, so they are not covered by the tests.
-
 ---
-
-## 🔒 Security
-
-- **No credentials in code**: the OAuth client secret comes from `GOOGLE_OAUTH_CLIENT_SECRET` (older revisions embedded it; it is no longer in the source). All sensitive data stored locally; account files are written with owner-only permissions (`0600`)
-- **Comprehensive .gitignore**: Accounts, tokens, logs excluded
-- **Local-only**: Binds to `127.0.0.1` by default. Requests from other websites (foreign `Origin` headers) and, while bound to loopback, requests with a non-local `Host` header (DNS rebinding) are refused
-- **npm audit clean**: the headless-browser stack (Puppeteer) is an optional peer dependency used only by Perplexity browser login, so the default install has no known advisories. CI runs `npm audit` and a full-history gitleaks scan on every push
-- **Secrets**: `.env.example` lists every setting; `.env` is git-ignored. A Google OAuth client secret that the upstream project publishes appeared in early history and is allow-listed in `.gitleaksignore`; it is no longer in the source
-
-See [SECURITY.md](SECURITY.md) for full security policy.
-
----
-
-## 📋 Version History
-
-| Version | Type | Features |
-|---------|------|----------|
-| **v2.10** | Extension v4.3.0 | **Offline tests + CI**, security hardening, optional browser stack, `npm audit` clean |
-| **v2.9** | Extension v4.3.0 | **Opt-in auto-start**, proxy disabled by default |
-| **v2.7** | Extension v4.1.1 | Per-window model selection, workspace persistence |
-| **v2.6** | Extension | Per-session isolation, sessions dashboard |
-| **v2.5** | Extension | IDE account switcher, simplified layout |
-| **v2.4** | Extension | Direct OAuth, multi-state auth server |
-| **v2.3** | Extension | Per-window models, dark theme dashboard |
-| **v2.2** | Extension | PM2 process manager, Material Design |
-| **v2.1** | Extension | Robust model routing, faster polling |
-| **v2.0** | Extension | Status bar extension, model mapping |
-| **v1.2** | CLI | Smart routing, model persistence |
-| **v1.1** | CLI | Multi-account, Perplexity, dashboard |
-| **v1.0** | CLI | Initial release |
-
-See [CHANGELOG.md](CHANGELOG.md) for detailed history.
-
----
-
-## 📜 License
-
-MIT License - See [LICENSE](LICENSE) for details.
-
-This project is built on [antigravity-claude-proxy](https://github.com/badrisnarayanan/antigravity-claude-proxy) by Badri Narayanan S, used under the MIT License. The original copyright notice is kept in [LICENSE](LICENSE).
-
----
-
-<p align="center">
-  <strong>Made with ❤️ for the Claude Code community</strong>
-  <br>
-  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Report Bug</a> •
-  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Request Feature</a>
-</p>
-
-<br>
-
-<h2 align="center">❤️ Support This Project</h2>
-
-<p align="center">
-  If you find this project helpful, please consider buying me a coffee! Your support helps keep the updates coming.
-</p>
-
-<p align="center">
-  <a href="https://ko-fi.com/ai_dev_2024">
-    <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me A Coffee" height="50">
-  </a>
-</p>
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  CC[Claude Code / any Anthropic client] -->|Messages API + SSE| SRV[server.js<br/>local Express gateway]
-  SRV --> FMT[format/<br/>request + response converters,<br/>schema sanitizer, thinking utils]
-  FMT --> AM[account-manager.js<br/>OAuth accounts, rotation, cool-downs]
-  AM --> G[cloudcode-client.js<br/>Gemini models]
-  AM --> P[perplexity-*-client.js<br/>Perplexity models]
-  G --> FMT
-  P --> FMT
-  SRV --> DASH[public/dashboard.html<br/>accounts, usage, health]
+  CC["Claude Code / any Anthropic client"] -->|"Messages API + SSE"| SRV["server.js<br/>Express gateway on 127.0.0.1:8080"]
+  EXT["Status bar extension"] -->|"model / quota polling"| SRV
+  SRV --> DASH["public/dashboard.html"]
+  SRV --> FMT["format/<br/>request + response converters,<br/>schema sanitizer, thinking utils"]
+  FMT --> CCC["cloudcode-client.js<br/>retries + failover"]
+  CCC --> AM["account-manager.js<br/>OAuth accounts, rotation, cool-downs"]
+  AM --> OAUTH["oauth.js / token-extractor.js"]
+  CCC -->|HTTPS| GCC[("Google Cloud Code API<br/>Gemini + Claude models")]
+  SRV --> PPLX["perplexity-*-client.js"]
+  PPLX -->|HTTP| PSRV[("Perplexity backend")]
 ```
 
-- The gateway speaks the Anthropic Messages API, so Claude Code needs only `ANTHROPIC_BASE_URL` pointed at it.
-- `format/` translates requests and streamed responses both ways, including tool calls and thinking blocks.
-- `account-manager.js` spreads requests across signed-in accounts and backs off from rate-limited ones.
-- `bin/cli.js` and `scripts/doctor.js` handle start-up, account login and self-checks.
+- `src/index.js` starts `src/server.js`, the Express app with all routes, CORS/Host checks and model routing.
+- `src/format/` converts Anthropic requests into Google Generative AI `contents`/`parts` and converts responses and SSE streams back. This includes tool calls, thinking signatures (with an in-memory signature cache) and recovery when a tool loop has lost its thinking blocks.
+- `src/cloudcode-client.js` calls the upstream with retries and endpoint fallback. `src/account-manager.js` picks the account, refreshes tokens and backs off from rate-limited accounts.
+- Perplexity models go through the `perplexity-*` clients. They are served by a separate Python server on `localhost:8000` that is **not part of this repository**, so they are not covered by the tests.
+
+---
+
+## Testing
+
+Run from the package folder. These are the same steps CI runs ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+
+```bash
+cd Antigravity-Claude-Code-Proxy
+PUPPETEER_SKIP_DOWNLOAD=true npm ci
+npm run lint          # ESLint: errors fail the build, warnings are reported
+npm test              # 50 offline tests (Node's built-in test runner)
+npm audit --package-lock-only --omit=dev --audit-level=high
+```
+
+`npm test` needs no accounts, keys or network. It covers:
+
+- **Server integration**: starts the real proxy on a free port with a temporary home folder and a mock Cloud Code upstream. Covers `/health`, `/v1/models`, streaming and non-streaming `/v1/messages`, tool calls, per-session models, the no-account error path, model-switch endpoints, cross-origin and DNS-rebinding blocking, override persistence across restarts, and account rotation when a token refresh fails.
+- **Unit tests**: request/response converters, content-to-parts conversion, the thoughtSignature cache, thinking-block filtering and tool-loop recovery, schema sanitizing, model aliases and error classes.
+- **CLI smoke tests**: `--help`, `--version` and unknown-command handling of `bin/cli.js`.
+
+The older end-to-end scripts talk to real models. They need a running proxy with at least one account and are not part of `npm test`: run `npm start` in one terminal and `npm run test:live` in another.
+
+---
+
+## Project structure
+
+```
+.
+├── Antigravity-Claude-Code-Proxy/   # The npm package (run npm commands here)
+│   ├── bin/cli.js                   # CLI entry point
+│   ├── src/
+│   │   ├── index.js                 # Starts the HTTP server
+│   │   ├── server.js                # Express app and routes
+│   │   ├── cloudcode-client.js      # Upstream client with retries/failover
+│   │   ├── account-manager.js       # Multi-account handling
+│   │   ├── format/                  # Anthropic <-> Google converters
+│   │   ├── perplexity-*.js          # Perplexity clients and session managers
+│   │   ├── constants.js             # Config and model aliases
+│   │   └── public/dashboard.html    # Web dashboard
+│   ├── scripts/                     # doctor.js, Perplexity login helpers
+│   └── tests/
+│       ├── smoke/                   # Offline tests run by `npm test`
+│       └── *.cjs                    # Live tests run by `npm run test:live`
+├── docs/                            # Setup guides, banner, demo, screenshots
+├── site/                            # GitHub Pages site
+├── scripts/setup/                   # Windows setup helpers (.bat)
+├── bin/claude-session.{sh,bat}      # Session launcher helpers
+└── .github/workflows/               # CI, Pages, release workflows
+```
+
+---
+
+## Security
+
+- The OAuth client secret comes from `GOOGLE_OAUTH_CLIENT_SECRET`. Older revisions embedded one that the upstream project publishes; it is no longer in the source and is allow-listed in `.gitleaksignore` for history scans.
+- Account files are written with owner-only permissions. `.env`, account, token and log files are git-ignored.
+- The headless-browser stack (Puppeteer) is an optional peer dependency used only by Perplexity browser login. The default install has no known advisories, and CI runs `npm audit` plus a full-history gitleaks scan.
+
+See [SECURITY.md](SECURITY.md) for the full policy.
+
+## Limitations and roadmap
+
+- Live provider access (Google Cloud Code, Perplexity) is not exercised in CI; only mocked upstreams are.
+- The Perplexity backend is a separate server that is not included here.
+- The Windows setup scripts and PowerShell steps are not verified in CI.
+- The status bar extension source (`claude-proxy-ext-src`) is referenced as a git submodule without a `.gitmodules` entry, so it is not checked out with this repository.
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Built on [antigravity-claude-proxy](https://github.com/badrisnarayanan/antigravity-claude-proxy) by Badri Narayanan S, used under the MIT License. The original copyright notice is kept in the license.
+
+<p align="center">
+  <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues">Report a bug</a> •
+  <a href="https://ko-fi.com/ai_dev_2024">Support on Ko-fi</a> •
+  <a href="https://startup.z.ai/">Part of the ZAI Start-up Community</a>
+</p>
