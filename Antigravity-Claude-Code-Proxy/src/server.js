@@ -21,6 +21,7 @@ import { rateLimit } from 'express-rate-limit';
 import { mapError } from './http/error-mapper.js';
 import { validateMessagesRequest, validateRoutingHeaders } from './http/validation.js';
 import { securityHeaders } from './http/security.js';
+import { detectModelSwitch } from './http/model-switch.js';
 import { registry, metricsMiddleware, setAccountCollector } from './http/metrics.js';
 import { RequestValidationError } from './errors.js';
 import { redactString } from './utils/redact.js';
@@ -1287,29 +1288,19 @@ app.post('/v1/messages', async (req, res) => {
                     ? lastUserMsg.content.filter(c => c.type === 'text').map(c => c.text).join(' ').toLowerCase()
                     : '');
 
-            // Pattern matching for model switch commands
-            const switchPatterns = [
-                /^\/model\s+(\w+[-\w]*)/i,  // Explicit /model command: "/model thinking"
-                /(?:switch|change|use|set)\s+(?:to|the)?\s*(?:model\s+)?(?:to\s+)?(\w+[-\w]*)/i,
-                /(?:model|switch)\s+(?:to\s+)?(\w+[-\w]*)/i
-            ];
-
-            for (const pattern of switchPatterns) {
-                const match = msgText.match(pattern);
-                if (match && match[1]) {
-                    const requestedModel = match[1].toLowerCase();
-                    const resolved = resolveModelAlias(requestedModel);
-                    if (resolved && resolved !== requestedModel) {
-                        setActiveModel(resolved);
-                        console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved}`);
-                    } else if (['flash', 'pro', 'grok', 'opus', 'sonnet', 'kimi', 'gpt', 'perplexity', 'think', 'thinking', 'strong', 'powerful', 'fast', 'quick', 'search', 'sonar'].includes(requestedModel)) {
-                        const resolved2 = resolveModelAlias(requestedModel);
-                        if (resolved2) {
-                            setActiveModel(resolved2);
-                            console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved2}`);
-                        }
+            // Pattern matching for model switch commands (linear-time; see http/model-switch.js)
+            const requestedModel = detectModelSwitch(msgText);
+            if (requestedModel) {
+                const resolved = resolveModelAlias(requestedModel);
+                if (resolved && resolved !== requestedModel) {
+                    setActiveModel(resolved);
+                    console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved}`);
+                } else if (['flash', 'pro', 'grok', 'opus', 'sonnet', 'kimi', 'gpt', 'perplexity', 'think', 'thinking', 'strong', 'powerful', 'fast', 'quick', 'search', 'sonar'].includes(requestedModel)) {
+                    const resolved2 = resolveModelAlias(requestedModel);
+                    if (resolved2) {
+                        setActiveModel(resolved2);
+                        console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved2}`);
                     }
-                    break;
                 }
             }
         }
