@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBackoff, parseRetryAfter, retryDelay, retry } from '../../src/resilience/backoff.js';
+import { computeBackoff, parseRetryAfter, retryDelay, retry, isTransientError } from '../../src/resilience/backoff.js';
 
 describe('computeBackoff', () => {
     it('grows exponentially without jitter', () => {
@@ -169,5 +169,25 @@ describe('retry', () => {
             )
         );
         assert.equal(calls, 1);
+    });
+});
+
+describe('isTransientError', () => {
+    it('accepts retryable-flagged errors, timeouts and network failures', () => {
+        assert.equal(isTransientError(Object.assign(new Error('x'), { retryable: true })), true);
+        assert.equal(isTransientError(Object.assign(new Error('t'), { name: 'TimeoutError' })), true);
+        assert.equal(isTransientError(new TypeError('fetch failed')), true);
+        assert.equal(isTransientError(Object.assign(new Error('reset'), { cause: { code: 'ECONNRESET' } })), true);
+        assert.equal(isTransientError(Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })), true);
+    });
+
+    it('rejects client errors, rate limits and empty values', () => {
+        assert.equal(isTransientError(Object.assign(new Error('bad'), { retryable: false, statusCode: 400 })), false);
+        assert.equal(
+            isTransientError(Object.assign(new Error('429'), { name: 'RateLimitError', retryable: true })),
+            false
+        );
+        assert.equal(isTransientError(new Error('plain')), false);
+        assert.equal(isTransientError(null), false);
     });
 });

@@ -123,3 +123,30 @@ export async function retry(fn, options = {}) {
         }
     }
 }
+
+const TRANSIENT_NETWORK_CODES = new Set([
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'EAI_AGAIN',
+    'UND_ERR_SOCKET',
+    'UND_ERR_CONNECT_TIMEOUT',
+    'UND_ERR_HEADERS_TIMEOUT'
+]);
+
+/**
+ * Should an upstream failure be retried against the same account?
+ * True for 5xx/timeout errors flagged `retryable` and for network failures.
+ * Rate limits are excluded: they rotate accounts instead (see account-manager).
+ * @param {any} error
+ * @returns {boolean}
+ */
+export function isTransientError(error) {
+    if (!error) return false;
+    if (error.name === 'RateLimitError') return false;
+    if (error.name === 'TimeoutError' || error.retryable === true) return true;
+    if (error.name === 'TypeError' && error.message === 'fetch failed') return true;
+    const code = error.code || error.cause?.code;
+    return typeof code === 'string' && TRANSIENT_NETWORK_CODES.has(code);
+}
