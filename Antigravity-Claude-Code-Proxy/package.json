@@ -26,7 +26,7 @@
     "lint:fix": "eslint src/ test/ --fix",
     "format": "prettier --write \"src/resilience/**/*.js\" \"src/http/**/*.js\" \"src/utils/redact.js\" \"test/**/*.{mjs,json}\" eslint.config.js tsconfig.json .c8rc.json",
     "format:check": "prettier --check \"src/resilience/**/*.js\" \"src/http/**/*.js\" \"src/utils/redact.js\" \"test/**/*.{mjs,json}\" eslint.config.js tsconfig.json .c8rc.json",
-    "test": "node --test --test-concurrency=1 tests/smoke/*.test.mjs test/unit/*.test.mjs",
+    "test": "node --test --test-concurrency=1 tests/smoke/*.test.mjs test/unit/*.test.mjs test/conformance/*.test.mjs",
     "test:live": "node tests/run-all.cjs",
     "test:signatures": "node tests/test-thinking-signatures.cjs",
     "test:multiturn": "node tests/test-multiturn-thinking-tools.cjs",

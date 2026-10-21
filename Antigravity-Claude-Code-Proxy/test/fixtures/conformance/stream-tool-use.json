@@ -1,0 +1,152 @@
+{
+  "name": "stream-tool-use",
+  "profile": "default",
+  "description": "A streamed text block followed by a tool call: separate indexed blocks, input_json_delta, stop_reason tool_use.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather in Paris?"
+        }
+      ],
+      "stream": true,
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": ["city"]
+          }
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Let me check."
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 20,
+              "candidatesTokenCount": 3
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "id": "call_9",
+                        "name": "get_weather",
+                        "args": {
+                          "city": "Paris"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 20,
+              "candidatesTokenCount": 8
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "events": [
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop"
+    ],
+    "eventData": [
+      {
+        "type": "message_start"
+      },
+      {
+        "index": 0,
+        "content_block": {
+          "type": "text"
+        }
+      },
+      {
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "Let me check."
+        }
+      },
+      {
+        "index": 0
+      },
+      {
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "call_9",
+          "name": "get_weather",
+          "input": {}
+        }
+      },
+      {
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"city\":\"Paris\"}"
+        }
+      },
+      {
+        "index": 1
+      },
+      {
+        "delta": {
+          "stop_reason": "tool_use"
+        },
+        "usage": {
+          "output_tokens": 8
+        }
+      },
+      {
+        "type": "message_stop"
+      }
+    ]
+  }
+}

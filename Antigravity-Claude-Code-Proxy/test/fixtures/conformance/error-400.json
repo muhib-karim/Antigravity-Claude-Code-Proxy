@@ -1,0 +1,40 @@
+{
+  "name": "error-400",
+  "profile": "default",
+  "description": "Upstream 400 INVALID_ARGUMENT -> 400 invalid_request_error with the upstream message; not retried.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 400,
+      "json": {
+        "error": {
+          "code": 400,
+          "message": "Invalid JSON payload received.",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "invalid_request_error",
+        "message": "Invalid JSON payload received."
+      }
+    }
+  }
+}

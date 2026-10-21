@@ -1,0 +1,140 @@
+{
+  "name": "tool-result-roundtrip",
+  "profile": "default",
+  "description": "tool_use/tool_result history becomes functionCall/functionResponse; the response is named after the tool, not its id.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": ["city"]
+          }
+        }
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather in Paris?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Checking."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_01",
+              "name": "get_weather",
+              "input": {
+                "city": "Paris"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_01",
+              "content": "Sunny, 21C"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "It is sunny and 21C in Paris."
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 40,
+            "candidatesTokenCount": 9
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "content": [
+        {
+          "type": "text",
+          "text": "It is sunny and 21C in Paris."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    "upstreamRequest": {
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Weather in Paris?"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Checking."
+              },
+              {
+                "functionCall": {
+                  "name": "get_weather",
+                  "args": {
+                    "city": "Paris"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "name": "get_weather",
+                  "response": {
+                    "result": "Sunny, 21C"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

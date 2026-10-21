@@ -1,0 +1,59 @@
+{
+  "name": "error-500-exhausted",
+  "profile": "default",
+  "description": "Persistent 500 -> retries exhausted, 502 api_error.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 500,
+      "json": {
+        "error": {
+          "code": 500,
+          "message": "Internal error encountered.",
+          "status": "INTERNAL"
+        }
+      }
+    },
+    {
+      "status": 500,
+      "json": {
+        "error": {
+          "code": 500,
+          "message": "Internal error encountered.",
+          "status": "INTERNAL"
+        }
+      }
+    },
+    {
+      "status": 500,
+      "json": {
+        "error": {
+          "code": 500,
+          "message": "Internal error encountered.",
+          "status": "INTERNAL"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 502,
+    "upstreamCalls": ["/v1internal:generateContent", "/v1internal:generateContent", "/v1internal:generateContent"],
+    "body": {
+      "error": {
+        "type": "api_error",
+        "message": "$contains:Internal error encountered."
+      }
+    }
+  }
+}

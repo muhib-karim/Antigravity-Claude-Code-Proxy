@@ -1,0 +1,59 @@
+{
+  "name": "error-503-exhausted",
+  "profile": "default",
+  "description": "Persistent 503 -> 1 call + 2 retries, then 529 overloaded_error.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 503,
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "unavailable",
+          "status": "UNAVAILABLE"
+        }
+      }
+    },
+    {
+      "status": 503,
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "unavailable",
+          "status": "UNAVAILABLE"
+        }
+      }
+    },
+    {
+      "status": 503,
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "unavailable",
+          "status": "UNAVAILABLE"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 529,
+    "upstreamCalls": ["/v1internal:generateContent", "/v1internal:generateContent", "/v1internal:generateContent"],
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "overloaded_error"
+      }
+    }
+  }
+}

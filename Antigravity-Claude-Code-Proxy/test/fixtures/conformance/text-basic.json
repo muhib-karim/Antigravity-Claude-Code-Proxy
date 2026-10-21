@@ -1,0 +1,85 @@
+{
+  "name": "text-basic",
+  "profile": "default",
+  "description": "Non-streaming text reply: request is wrapped for Cloud Code and the reply is an Anthropic message.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "Hello from the mock upstream"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "body": {
+      "id": "$regex:^msg_",
+      "type": "message",
+      "role": "assistant",
+      "model": "gemini-3-flash",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello from the mock upstream"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "usage": {
+        "input_tokens": 7,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "upstreamRequest": {
+      "model": "gemini-3-flash",
+      "project": "mock-project",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Say hello"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 64
+        }
+      }
+    }
+  }
+}

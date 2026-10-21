@@ -1,0 +1,44 @@
+{
+  "name": "stream-upstream-400",
+  "profile": "default",
+  "description": "Errors after the SSE headers are flushed arrive as an Anthropic `error` event.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "status": 400,
+      "json": {
+        "error": {
+          "code": 400,
+          "message": "Bad schema in tools",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "events": ["error"],
+    "eventData": [
+      {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "Bad schema in tools"
+        }
+      }
+    ]
+  }
+}

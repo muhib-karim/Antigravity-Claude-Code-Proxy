@@ -1,0 +1,58 @@
+{
+  "name": "system-string",
+  "profile": "default",
+  "description": "A string system prompt becomes systemInstruction text.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "system": "You are terse."
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "ok"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "upstreamRequest": {
+      "request": {
+        "systemInstruction": {
+          "parts": [
+            {
+              "text": "$contains:You are terse."
+            }
+          ]
+        }
+      }
+    }
+  }
+}

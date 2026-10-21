@@ -1,0 +1,45 @@
+{
+  "name": "strict-error-429-as-429",
+  "profile": "strict",
+  "description": "With RATE_LIMIT_STATUS=429, exhausted quota is a 429 rate_limit_error with retry-after.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "30"
+      },
+      "json": {
+        "error": {
+          "code": 429,
+          "message": "quota",
+          "status": "RESOURCE_EXHAUSTED"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 429,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "headers": {
+      "retry-after": "$regex:^(29|30)$"
+    },
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "rate_limit_error"
+      }
+    }
+  }
+}

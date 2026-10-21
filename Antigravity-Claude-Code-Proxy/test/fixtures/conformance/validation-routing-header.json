@@ -1,0 +1,31 @@
+{
+  "name": "validation-routing-header",
+  "profile": "default",
+  "description": "Routing headers are allow-listed: a malformed X-Override-Model is rejected.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    },
+    "headers": {
+      "x-override-model": "gemini 3; drop"
+    }
+  },
+  "upstream": [],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": [],
+    "body": {
+      "error": {
+        "type": "invalid_request_error",
+        "message": "$contains:x-override-model"
+      }
+    }
+  }
+}

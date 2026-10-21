@@ -1,0 +1,52 @@
+{
+  "name": "stop-max-tokens",
+  "profile": "default",
+  "description": "finishReason MAX_TOKENS maps to stop_reason max_tokens.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 3,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "Hello there"
+                  }
+                ]
+              },
+              "finishReason": "MAX_TOKENS"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 3
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "stop_reason": "max_tokens",
+      "usage": {
+        "output_tokens": 3
+      }
+    }
+  }
+}

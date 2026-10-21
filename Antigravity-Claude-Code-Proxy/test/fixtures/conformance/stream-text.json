@@ -1,0 +1,138 @@
+{
+  "name": "stream-text",
+  "profile": "default",
+  "description": "Streaming text follows the Anthropic SSE event order.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Hello from "
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 7,
+              "candidatesTokenCount": 2
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "the stream"
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 7,
+              "candidatesTokenCount": 5
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "headers": {
+      "content-type": "$contains:text/event-stream"
+    },
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "events": [
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop"
+    ],
+    "eventData": [
+      {
+        "type": "message_start",
+        "message": {
+          "id": "$regex:^msg_",
+          "type": "message",
+          "role": "assistant",
+          "model": "gemini-3-flash",
+          "content": [],
+          "stop_reason": null,
+          "usage": {
+            "input_tokens": 7
+          }
+        }
+      },
+      {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "Hello from "
+        }
+      },
+      {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "the stream"
+        }
+      },
+      {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "output_tokens": 5
+        }
+      },
+      {
+        "type": "message_stop"
+      }
+    ]
+  }
+}

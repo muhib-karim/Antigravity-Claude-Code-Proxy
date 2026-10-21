@@ -1,0 +1,49 @@
+{
+  "name": "error-401",
+  "profile": "default",
+  "description": "Upstream 401 -> one retry with a fresh token, then 401 authentication_error.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 401,
+      "json": {
+        "error": {
+          "code": 401,
+          "message": "Request had invalid authentication credentials.",
+          "status": "UNAUTHENTICATED"
+        }
+      }
+    },
+    {
+      "status": 401,
+      "json": {
+        "error": {
+          "code": 401,
+          "message": "Request had invalid authentication credentials.",
+          "status": "UNAUTHENTICATED"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 401,
+    "upstreamCalls": ["/v1internal:generateContent", "/v1internal:generateContent"],
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "authentication_error"
+      }
+    }
+  }
+}
