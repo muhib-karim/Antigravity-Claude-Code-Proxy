@@ -1,0 +1,81 @@
+name: Release
+
+# Proxy releases. Pushing an annotated tag vX.Y.Z (on the merge commit) creates the GitHub
+# release from committed release notes and marks it Latest:
+#   RELEASE_NOTES_vX.Y.Z.md at the repo root, or else the "## [X.Y.Z]" section of CHANGELOG.md.
+# The tag must match Antigravity-Claude-Code-Proxy/package.json. The status bar extension is
+# released separately with ext-v* tags (see publish.yml).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing vX.Y.Z tag to (re)build the release for'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check tag, version and release notes
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$TAG' is not a vX.Y.Z tag"; exit 1
+          fi
+          version="${TAG#v}"
+          pkg=$(node -p "require('./Antigravity-Claude-Code-Proxy/package.json').version")
+          if [ "$pkg" != "$version" ]; then
+            echo "::error::tag $TAG does not match package.json version $pkg"; exit 1
+          fi
+          notes="RELEASE_NOTES_${TAG}.md"
+          if [ ! -s "$notes" ]; then
+            notes="$RUNNER_TEMP/notes.md"
+            awk -v v="$version" 'index($0, "## [" v "]") == 1 {found=1; next} found && /^## \[/ {exit} found {print}' CHANGELOG.md > "$notes"
+            if [ ! -s "$notes" ]; then
+              echo "::error::no RELEASE_NOTES_${TAG}.md and no '## [$version]' section in CHANGELOG.md"; exit 1
+            fi
+          fi
+          echo "NOTES_FILE=$notes" >> "$GITHUB_ENV"
+          echo "Release notes: $notes"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Antigravity-Claude-Code-Proxy/package-lock.json
+
+      - name: Tests must pass on the tagged commit
+        working-directory: Antigravity-Claude-Code-Proxy
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: |
+          npm ci
+          npm test
+
+      - name: Create or update the GitHub release (Latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES_FILE" --draft=false --latest
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE" --verify-tag --latest
+          fi
+          gh release view "$TAG" --json tagName,isLatest,url --jq '"\(.tagName) latest=\(.isLatest) \(.url)"' >> "$GITHUB_STEP_SUMMARY"

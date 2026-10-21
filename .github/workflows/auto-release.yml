@@ -1,83 +1,53 @@
-name: Auto Release
+name: Auto Release (extension tag)
+
+# When CHANGELOG.md changes on main, tag the status bar extension's current version as
+# ext-vX.Y.Z if that tag does not exist yet. It only ever creates ext-v* tags, so it can
+# never collide with proxy release tags (vX.Y.Z, see release.yml).
+# Note: tags pushed with GITHUB_TOKEN do not start other workflows; run "Publish Extension"
+# manually (or push the ext-v tag yourself) to publish.
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'claude-proxy-ext-src/**'
       - 'CHANGELOG.md'
-      - '!.github/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  check-and-release:
+  tag-extension:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
     steps:
       - name: Checkout main repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clone extension repo
+      - name: Read the extension version
+        id: ext
         run: |
-          rm -rf claude-proxy-ext-src
-          git clone https://github.com/muhib-karim/Claude-Proxy-Extension.git claude-proxy-ext-src
-          echo "Cloned extension repo"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Get current extension version
-        id: ext_version
-        run: |
-          EXT_VERSION=$(node -p "require('./claude-proxy-ext-src/package.json').version")
-          echo "EXT_VERSION=$EXT_VERSION" >> $GITHUB_OUTPUT
-          echo "Current extension version: $EXT_VERSION"
-
-      - name: Check if version tag exists
-        id: check_tag
-        run: |
-          EXT_VERSION=${{ steps.ext_version.outputs.EXT_VERSION }}
-          # Create proxy version from extension version (e.g., 4.3.0 -> 2.9.4 pattern)
-          MAJOR=$(echo $EXT_VERSION | cut -d. -f1)
-          MINOR=$(echo $EXT_VERSION | cut -d. -f2)
-          PATCH=$(echo $EXT_VERSION | cut -d. -f3)
-          # Map extension version to proxy version (extension 4.x -> proxy 2.x)
-          PROXY_VERSION="2.$MINOR.$PATCH"
-          echo "PROXY_VERSION=$PROXY_VERSION" >> $GITHUB_OUTPUT
-          
-          if git rev-parse "v$PROXY_VERSION" >/dev/null 2>&1; then
-            echo "Tag v$PROXY_VERSION already exists, skipping release"
-            echo "SHOULD_RELEASE=false" >> $GITHUB_OUTPUT
-          else
-            echo "Tag v$PROXY_VERSION does not exist, will create release"
-            echo "SHOULD_RELEASE=true" >> $GITHUB_OUTPUT
+          git clone --depth 1 https://github.com/muhib-karim/Claude-Proxy-Extension.git /tmp/ext
+          EXT_VERSION=$(node -p "require('/tmp/ext/package.json').version")
+          if ! printf '%s' "$EXT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::unexpected extension version '$EXT_VERSION'"; exit 1
           fi
+          echo "TAG=ext-v$EXT_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create and push version tag
-        if: steps.check_tag.outputs.SHOULD_RELEASE == 'true'
+      - name: Create the extension tag if missing
+        env:
+          TAG: ${{ steps.ext.outputs.TAG }}
         run: |
-          VERSION=${{ steps.check_tag.outputs.PROXY_VERSION }}
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git tag -a "v$VERSION" -m "v$VERSION: Auto-release for Extension v${{ steps.ext_version.outputs.EXT_VERSION }}"
-          git push origin "v$VERSION"
-          echo "Created and pushed tag v$VERSION"
-
-      - name: Summary
-        run: |
-          if [ "${{ steps.check_tag.outputs.SHOULD_RELEASE }}" = "true" ]; then
-            echo "## 🏷️ Tag Created!" >> $GITHUB_STEP_SUMMARY
-            echo "- **Tag**: v${{ steps.check_tag.outputs.PROXY_VERSION }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Extension**: v${{ steps.ext_version.outputs.EXT_VERSION }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Status**: Publish workflow will be triggered" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "## ℹ️ No Release Needed" >> $GITHUB_STEP_SUMMARY
-            echo "Tag v${{ steps.check_tag.outputs.PROXY_VERSION }} already exists" >> $GITHUB_STEP_SUMMARY
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; nothing to do" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag -a "$TAG" -m "Status bar extension ${TAG#ext-}"
+          git push origin "refs/tags/$TAG"
+          echo "Created $TAG" | tee -a "$GITHUB_STEP_SUMMARY"
