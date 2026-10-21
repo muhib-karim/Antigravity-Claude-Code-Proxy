@@ -16,8 +16,14 @@ import { PerplexitySessionAccountManager } from './perplexity-session-account-ma
 import { getLoginService } from './perplexity-browser-login.js';
 import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
-import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, resolveModelAlias } from './constants.js';
+import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, resolveModelAlias } from './constants.js';
+import { rateLimit } from 'express-rate-limit';
 import { mapError } from './http/error-mapper.js';
+import { validateMessagesRequest, validateRoutingHeaders } from './http/validation.js';
+import { securityHeaders } from './http/security.js';
+import { registry, metricsMiddleware, setAccountCollector } from './http/metrics.js';
+import { RequestValidationError } from './errors.js';
+import { redactString } from './utils/redact.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
 import fs from 'fs';
@@ -37,7 +43,7 @@ if (!fs.existsSync(LOG_DIR)) {
 
 function logToFile(message) {
     const timestamp = new Date().toISOString();
-    const logLine = `[${timestamp}] ${message}\n`;
+    const logLine = `[${timestamp}] ${redactString(String(message))}\n`;
     fs.appendFileSync(LOG_FILE, logLine);
     console.log(message); // Also log to console
 }
@@ -48,7 +54,31 @@ function logRequest(type, model, source = 'unknown', durationMs = null) {
 }
 
 const app = express();
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(metricsMiddleware);
 const accountManager = new AccountManager();
+setAccountCollector(() => {
+    const status = accountManager.getStatus();
+    return [
+        { labels: { state: 'total' }, value: status.total },
+        { labels: { state: 'available' }, value: status.available },
+        { labels: { state: 'rate_limited' }, value: status.rateLimited },
+        { labels: { state: 'invalid' }, value: status.invalid }
+    ];
+});
+
+/**
+ * Append the proxy's model note to a system prompt without losing its shape:
+ * Anthropic allows a string or an array of text blocks (Claude Code sends blocks).
+ * @param {string|Array<object>|undefined} system - Client system prompt
+ * @param {string} note - Text to append
+ * @returns {string|Array<object>}
+ */
+function appendSystemNote(system, note) {
+    if (Array.isArray(system)) return [...system, { type: 'text', text: note.trim() }];
+    return (system || '') + note;
+}
 const perplexityAccountManager = new PerplexityAccountManager();
 const perplexityClient = new PerplexityClient(perplexityAccountManager);
 // Perplexity Session-based client (uses subscription instead of API keys)
@@ -414,6 +444,33 @@ app.use((req, res, next) => {
     next();
 });
 app.use(cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin)) }));
+
+// Per-client request budget. Generous enough for parallel Claude Code agents, low enough
+// to stop a runaway local script from hammering the account/model/restart endpoints.
+app.use(rateLimit({
+    windowMs: 60 * 1000,
+    limit: MANAGEMENT_RATE_LIMIT,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: req => req.path === '/v1/messages' || req.path === '/v1/messages/count_tokens',
+    handler: (req, res, next, options) => {
+        res.setHeader('retry-after', String(Math.ceil(options.windowMs / 1000)));
+        res.status(429).json({
+            type: 'error',
+            error: { type: 'rate_limit_error', message: 'Too many requests to the proxy. Slow down and retry.' }
+        });
+    }
+}));
+
+// While shutting down, answer new requests on kept-alive sockets with 503 so clients reconnect elsewhere
+app.use((req, res, next) => {
+    if (req.app.locals.isDraining?.()) {
+        res.setHeader('connection', 'close');
+        return res.status(503).json({ type: 'error', error: { type: 'api_error', message: 'Proxy is shutting down' } });
+    }
+    next();
+});
+
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 
 // Serve static files (dashboard)
@@ -807,6 +864,39 @@ app.use((req, res, next) => {
 });
 
 /**
+ * Liveness: the process is up and serving HTTP. No upstream or disk access.
+ */
+app.get('/livez', (req, res) => {
+    res.json({ status: 'ok' });
+});
+
+/**
+ * Readiness: at least one usable account and not draining.
+ */
+app.get('/readyz', async (req, res) => {
+    try {
+        await ensureInitialized();
+        const status = accountManager.getStatus();
+        const ready = status.available > 0;
+        res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', available: status.available });
+    } catch (error) {
+        res.status(503).json({ status: 'not_ready', error: redactString(error.message) });
+    }
+});
+
+/**
+ * Prometheus metrics (text exposition format 0.0.4)
+ */
+app.get('/metrics', async (req, res) => {
+    try {
+        await ensureInitialized();
+    } catch {
+        // Metrics stay available even when no account could be loaded
+    }
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(registry.render());
+});
+
+/**
  * Health check endpoint
  */
 app.get('/health', async (req, res) => {
@@ -1148,6 +1238,15 @@ app.post('/v1/messages/count_tokens', (req, res) => {
  */
 app.post('/v1/messages', async (req, res) => {
     try {
+        // Reject malformed requests before touching accounts or the upstream
+        // req.is() is false only when a body was sent with a non-JSON content type
+        const problems = req.is('json') === false
+            ? ['content-type: must be application/json']
+            : [...validateMessagesRequest(req.body), ...validateRoutingHeaders(req.headers)];
+        if (problems.length > 0) {
+            throw new RequestValidationError(problems);
+        }
+
         // Ensure account manager is initialized
         await ensureInitialized();
 
@@ -1169,22 +1268,12 @@ app.post('/v1/messages', async (req, res) => {
             thinking,
             top_p,
             top_k,
-            temperature
+            temperature,
+            stop_sequences
         } = req.body;
 
         // DEBUG: Log that we received a message request
         console.log(`[DEBUG] POST /v1/messages received - model: ${model}, messages: ${messages?.length} msgs`);
-
-        // Validate required fields
-        if (!messages || !Array.isArray(messages)) {
-            return res.status(400).json({
-                type: 'error',
-                error: {
-                    type: 'invalid_request_error',
-                    message: 'messages is required and must be an array'
-                }
-            });
-        }
 
         // ================= NATURAL LANGUAGE MODEL SWITCHING =================
         // Detect phrases like "switch to grok", "use pro model", "change model to flash"
@@ -1250,7 +1339,7 @@ app.post('/v1/messages', async (req, res) => {
             const resolvedHeader = resolveModelAlias(headerOverrideModel);
             console.log(`[API] Per-window model override via header: ${headerOverrideModel} → ${resolvedHeader}`);
             // Use header model directly, skip smart routing
-            const enhancedSystem = (system || '') + `\n[SYSTEM INFO: You are currently running on ${resolvedHeader} via Antigravity Claude Proxy.]`;
+            const enhancedSystem = appendSystemNote(system, `\n[SYSTEM INFO: You are currently running on ${resolvedHeader} via Antigravity Claude Proxy.]`);
 
             const request = {
                 model: resolvedHeader,
@@ -1331,22 +1420,22 @@ app.post('/v1/messages', async (req, res) => {
 
         // ================= MODEL INFO INJECTION =================
         // Add active model info to system prompt so AI knows what it's using
-        let enhancedSystem = system || '';
         const modelInfo = `\n[SYSTEM INFO: You are currently running on ${resolvedModel} via Antigravity Claude Proxy.]`;
-        enhancedSystem = enhancedSystem + modelInfo;
+        const enhancedSystem = appendSystemNote(system, modelInfo);
 
         const request = {
             model: resolvedModel,
             messages,
             max_tokens: max_tokens || 4096,
             stream,
-            system: enhancedSystem || system,  // Use enhanced system with model info
+            system: enhancedSystem,  // Client system prompt plus the active-model note
             tools,
             tool_choice,
             thinking,
             top_p,
             top_k,
-            temperature
+            temperature,
+            stop_sequences
         };
 
         const requestStartTime = Date.now();
@@ -1402,7 +1491,8 @@ app.post('/v1/messages', async (req, res) => {
                 };
 
                 if (system) {
-                    openaiPayload.messages.unshift({ role: 'system', content: system });
+                    const systemText = Array.isArray(system) ? system.map(b => b.text).join('\n') : system;
+                    openaiPayload.messages.unshift({ role: 'system', content: systemText });
                 }
 
                 console.log(`[API] Forwarding to Python server: ${pythonServerUrl} (stream: ${stream})`);
@@ -1588,6 +1678,19 @@ app.use('*', (req, res) => {
             message: `Endpoint ${req.method} ${req.originalUrl} not found`
         }
     });
+});
+
+/**
+ * Error handler: body-parser failures (malformed JSON, oversized bodies) and anything a
+ * route forwards with next(err) become Anthropic-style JSON errors, never an HTML page.
+ */
+app.use((err, req, res, next) => {
+    // Response already under way: let Express close the connection
+    if (res.headersSent) return next(err);
+    if (!(err && err.type && String(err.type).startsWith('entity.'))) {
+        console.error('[Server] Unhandled route error:', err);
+    }
+    sendError(res, err);
 });
 
 export default app;

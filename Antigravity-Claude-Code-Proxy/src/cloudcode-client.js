@@ -338,6 +338,7 @@ export async function sendMessage(anthropicRequest, accountManager) {
     }
 
     let transientRetries = 0;
+    let authRetried = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         // Use sticky account selection for cache continuity
         const { account: stickyAccount, waitMs } = accountManager.pickStickyAccount();
@@ -430,6 +431,7 @@ export async function sendMessage(anthropicRequest, accountManager) {
                                 console.log('[CloudCode] Auth error, refreshing token...');
                                 accountManager.clearTokenCache(account.email);
                                 accountManager.clearProjectCache(account.email);
+                                lastError = upstreamError(response, errorText);
                                 continue;
                             }
 
@@ -490,6 +492,12 @@ export async function sendMessage(anthropicRequest, accountManager) {
             if (isAuthError(error)) {
                 // Auth invalid - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} has invalid credentials, trying next...`);
+                continue;
+            }
+            // Upstream 401: token caches were cleared, so retry once with a freshly fetched token
+            if (error.statusCode === 401 && !authRetried) {
+                authRetried = true;
+                attempt--;
                 continue;
             }
             // 5xx / timeout / network: back off and retry the same account (does not use up an account attempt)
@@ -636,6 +644,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
     }
 
     let transientRetries = 0;
+    let authRetried = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         // Use sticky account selection for cache continuity
         const { account: stickyAccount, waitMs } = accountManager.pickStickyAccount();
@@ -727,6 +736,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                             // Auth error - clear caches and retry
                             accountManager.clearTokenCache(account.email);
                             accountManager.clearProjectCache(account.email);
+                            lastError = upstreamError(response, errorText);
                             continue;
                         }
 
@@ -792,6 +802,12 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
             if (isAuthError(error)) {
                 // Auth invalid - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} has invalid credentials, trying next...`);
+                continue;
+            }
+            // Upstream 401: token caches were cleared, so retry once with a freshly fetched token
+            if (error.statusCode === 401 && !authRetried) {
+                authRetried = true;
+                attempt--;
                 continue;
             }
             // 5xx / timeout / network: back off and retry the same account (does not use up an account attempt)
