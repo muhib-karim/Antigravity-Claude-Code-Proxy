@@ -16,6 +16,7 @@
   <a href="#quick-start">Quick start</a> •
   <a href="#usage">Usage</a> •
   <a href="#architecture">Architecture</a> •
+  <a href="#upstream-and-what-this-fork-adds">What this fork adds</a> •
   <a href="#testing">Testing</a>
 </p>
 
@@ -60,6 +61,36 @@ Real output from this repository, rendered to SVG (CLI help plus the offline tes
 </details>
 
 ---
+
+## Upstream and what this fork adds
+
+**Upstream:** [badrisnarayanan/antigravity-claude-proxy](https://github.com/badrisnarayanan/antigravity-claude-proxy) by Badri Narayanan S, [MIT License](LICENSE). The upstream copyright notice is kept in [LICENSE](LICENSE) and credited in [NOTICE](NOTICE). Upstream provides the core gateway: the Anthropic ↔ Google format converters in `src/format/`, the Cloud Code client, the multi-account manager, OAuth account onboarding and the CLI.
+
+Everything below was added in this repository on top of that base (`C` = commit, links go to the change).
+
+**Earlier releases (v2.0–v2.10)**
+
+| Area | Added | Where |
+|---|---|---|
+| Providers | Perplexity routing (API key, session and browser login), auto-fallback to Gemini when tools are used | [C 72a5326](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/72a5326), [C c182a3e](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/c182a3e) |
+| Model routing | 37 short aliases, global override, per-session models via `X-Session-ID`, sessions dashboard | [C c182a3e](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/c182a3e), [C 2d18b89](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/2d18b89) |
+| Editor integration | Status bar extension (Open VSX) and its release workflows | [C 7265a2d](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/7265a2d), [`.github/workflows/publish.yml`](.github/workflows/publish.yml) |
+| Tests and CI | Offline smoke suite against a mock upstream (`tests/smoke/`), Node 20/22 CI, gitleaks, npm audit | [C 9244ca4](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/9244ca4), [C 603c9ce](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/603c9ce), [C 7c5fd03](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/7c5fd03) |
+| Security | Loopback bind, Origin/Host (DNS-rebinding) checks, `0600` account files, OAuth secret moved to env, Puppeteer made optional | [C 9244ca4](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/9244ca4) |
+| Docs | Project website on GitHub Pages | [C c97a889](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/c97a889), [`site/`](site/) |
+
+**v2.11.0 (this release)**
+
+| Area | Added | Where |
+|---|---|---|
+| Conformance | 30 synthetic JSON fixtures replayed against the real proxy and a scripted mock upstream: request/response mapping, SSE event order, tool_use/tool_result round-trips, system prompts, stop reasons, usage fields, 4xx/5xx/429 mapping with `retry-after`, timeouts, validation, header allow-list | [`test/conformance/`](Antigravity-Claude-Code-Proxy/test/conformance/messages.test.mjs), [`test/fixtures/conformance/`](Antigravity-Claude-Code-Proxy/test/fixtures/conformance/), [C 174caa1](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/174caa1) |
+| Bugs found by the suite | Array `system` prompts (what Claude Code sends) were sent upstream as `"[object Object]"`; `stop_sequences` were dropped; `tool_result` was named after the tool id instead of the tool; tool-schema hints were duplicated and `const` was passed to Gemini; a 401 ended in "Max retries exceeded" | [C 89125c3](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/89125c3), [C 4dfe982](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/4dfe982), [C ef43636](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/ef43636) |
+| Resilience | Exponential backoff with full jitter, `Retry-After` (seconds or HTTP date) honoured, 5xx/timeout/network retries per account that never replay a started stream, whole-exchange deadlines (504), graceful shutdown that drains SSE streams | [`src/resilience/backoff.js`](Antigravity-Claude-Code-Proxy/src/resilience/backoff.js), [`src/http/shutdown.js`](Antigravity-Claude-Code-Proxy/src/http/shutdown.js), [C 6c1739e](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/6c1739e), [C 8b5ca16](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/8b5ca16) |
+| Error mapping | Anthropic error types for 400/401/403/404/413/429/502/504/529 with `retry-after` | [`src/http/error-mapper.js`](Antigravity-Claude-Code-Proxy/src/http/error-mapper.js), [C 7e22f23](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/7e22f23) |
+| Hardening | Request validation with one clear 400, JSON errors for malformed/oversized bodies (413), routing-header allow-list, client credentials never forwarded upstream, secret redaction for console and log file, helmet-style headers, per-client rate limit, linear-time model-switch regexes (ReDoS), no API-key fragments in logs | [`src/http/validation.js`](Antigravity-Claude-Code-Proxy/src/http/validation.js), [`src/utils/redact.js`](Antigravity-Claude-Code-Proxy/src/utils/redact.js), [`src/http/security.js`](Antigravity-Claude-Code-Proxy/src/http/security.js), [C a091d61](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/a091d61) |
+| Operability | `/livez`, `/readyz`, `/metrics` (Prometheus text: requests, latency, upstream retries, account states) | [`src/http/metrics.js`](Antigravity-Claude-Code-Proxy/src/http/metrics.js), [C 7890434](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/7890434) |
+| Tests | Unit tests for backoff, error mapping, redaction, validation, metrics, shutdown, account cooldown/rotation and schema cleaning; integration tests for redaction, probes, rate limiting, shutdown and management endpoints (192 offline tests in total) | [`test/unit/`](Antigravity-Claude-Code-Proxy/test/unit/), [`test/integration/`](Antigravity-Claude-Code-Proxy/test/integration/) |
+| Quality gates | `// @ts-check` + `tsc --noEmit`, ESLint and Prettier checks, c8 coverage gate (80% lines) on the core request path, CodeQL, Dependabot, CI on Node 20 and 22 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml), [`.c8rc.json`](Antigravity-Claude-Code-Proxy/.c8rc.json), [C 1e573dd](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/1e573dd) |
 
 ## Quick start
 

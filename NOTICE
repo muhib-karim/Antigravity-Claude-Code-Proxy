@@ -1,0 +1,16 @@
+Antigravity Claude Code Proxy
+Additions copyright (c) 2025-2026 the contributors to this repository
+
+This product is a fork of, and includes software from:
+
+  antigravity-claude-proxy
+  https://github.com/badrisnarayanan/antigravity-claude-proxy
+  Copyright (c) 2024 Badri Narayanan S
+  Licensed under the MIT License (see LICENSE)
+
+Parts of the Cloud Code request handling follow the approach of
+opencode-antigravity-auth (https://github.com/NoeFabris/opencode-antigravity-auth),
+as credited in src/cloudcode-client.js and src/format/schema-sanitizer.js.
+
+The upstream copyright notice is preserved in LICENSE. Additions made in this
+repository are described in README.md ("Upstream and what this fork adds").
