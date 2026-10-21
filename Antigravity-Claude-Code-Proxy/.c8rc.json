@@ -1,0 +1,23 @@
+{
+  "all": true,
+  "src": ["src"],
+  "include": [
+    "src/server.js",
+    "src/index.js",
+    "src/cloudcode-client.js",
+    "src/account-manager.js",
+    "src/errors.js",
+    "src/constants.js",
+    "src/format/**",
+    "src/http/**",
+    "src/resilience/**",
+    "src/utils/**"
+  ],
+  "reporter": ["text-summary", "text", "lcov", "json-summary"],
+  "reports-dir": "coverage",
+  "check-coverage": true,
+  "lines": 80,
+  "statements": 80,
+  "functions": 80,
+  "branches": 75
+}
