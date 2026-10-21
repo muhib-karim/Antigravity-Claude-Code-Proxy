@@ -1,0 +1,106 @@
+{
+  "name": "thinking-history-roundtrip",
+  "profile": "default",
+  "description": "Multi-turn tool loop with signed thinking in history: thinking blocks are stripped before forwarding, tool call/result kept.",
+  "request": {
+    "body": {
+      "model": "gemini-3-pro-high",
+      "max_tokens": 256,
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": ["city"]
+          }
+        }
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather in Paris?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "PRIVATE-REASONING-TEXT",
+              "signature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_h1",
+              "name": "get_weather",
+              "input": {
+                "city": "Paris"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_h1",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Sunny"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "It is sunny."
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 50,
+              "candidatesTokenCount": 4
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "body": {
+      "content": [
+        {
+          "type": "text",
+          "text": "It is sunny."
+        }
+      ]
+    },
+    "upstreamContains": ["\"functionResponse\"", "\"name\":\"get_weather\"", "\"result\":\"Sunny\""],
+    "upstreamNotContains": ["PRIVATE-REASONING-TEXT"]
+  }
+}

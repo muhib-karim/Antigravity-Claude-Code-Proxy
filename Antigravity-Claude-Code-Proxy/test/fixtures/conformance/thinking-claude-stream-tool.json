@@ -1,0 +1,172 @@
+{
+  "name": "thinking-claude-stream-tool",
+  "profile": "default",
+  "description": "Claude thinking model: thinking budget forwarded, thinking block signed, then a tool call with stop_reason tool_use.",
+  "request": {
+    "body": {
+      "model": "claude-sonnet-4-5-thinking",
+      "max_tokens": 512,
+      "stream": true,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 4096
+      },
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": ["city"]
+          }
+        }
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather in Paris?"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "I should call the tool.",
+                      "thought": true,
+                      "thoughtSignature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 30,
+              "candidatesTokenCount": 4
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "id": "toolu_c1",
+                        "name": "get_weather",
+                        "args": {
+                          "city": "Paris"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 30,
+              "candidatesTokenCount": 9
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "events": [
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_stop",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop"
+    ],
+    "eventData": [
+      {
+        "message": {
+          "model": "claude-sonnet-4-5-thinking"
+        }
+      },
+      {
+        "index": 0,
+        "content_block": {
+          "type": "thinking"
+        }
+      },
+      {
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "I should call the tool."
+        }
+      },
+      {
+        "delta": {
+          "type": "signature_delta",
+          "signature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "index": 0
+      },
+      {
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_c1",
+          "name": "get_weather"
+        }
+      },
+      {
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"city\":\"Paris\"}"
+        }
+      },
+      {
+        "index": 1
+      },
+      {
+        "delta": {
+          "stop_reason": "tool_use"
+        }
+      },
+      {
+        "type": "message_stop"
+      }
+    ],
+    "upstreamRequest": {
+      "request": {
+        "generationConfig": {
+          "thinkingConfig": {
+            "include_thoughts": true,
+            "thinking_budget": 4096
+          }
+        }
+      }
+    }
+  }
+}

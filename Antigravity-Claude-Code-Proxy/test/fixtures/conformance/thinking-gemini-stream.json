@@ -1,0 +1,182 @@
+{
+  "name": "thinking-gemini-stream",
+  "profile": "default",
+  "description": "Streamed thinking: thinking_delta events, a signature_delta before the block closes, then the text block.",
+  "request": {
+    "body": {
+      "model": "gemini-3-pro-high",
+      "max_tokens": 256,
+      "stream": true,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 2048
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why is the sky blue?"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Considering ",
+                      "thought": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 9,
+              "candidatesTokenCount": 2
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "scattering.",
+                      "thought": true,
+                      "thoughtSignature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 9,
+              "candidatesTokenCount": 4
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Rayleigh scattering."
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 9,
+              "candidatesTokenCount": 8
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "events": [
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_delta",
+      "content_block_stop",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop"
+    ],
+    "eventData": [
+      {
+        "type": "message_start"
+      },
+      {
+        "index": 0,
+        "content_block": {
+          "type": "thinking",
+          "thinking": ""
+        }
+      },
+      {
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "Considering "
+        }
+      },
+      {
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "scattering."
+        }
+      },
+      {
+        "index": 0,
+        "delta": {
+          "type": "signature_delta",
+          "signature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "index": 0
+      },
+      {
+        "index": 1,
+        "content_block": {
+          "type": "text"
+        }
+      },
+      {
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "Rayleigh scattering."
+        }
+      },
+      {
+        "index": 1
+      },
+      {
+        "delta": {
+          "stop_reason": "end_turn"
+        },
+        "usage": {
+          "output_tokens": 8
+        }
+      },
+      {
+        "type": "message_stop"
+      }
+    ],
+    "upstreamRequest": {
+      "request": {
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true,
+            "thinkingBudget": 2048
+          }
+        }
+      }
+    }
+  }
+}
