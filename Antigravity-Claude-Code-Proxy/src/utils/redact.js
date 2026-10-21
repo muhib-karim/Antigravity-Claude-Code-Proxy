@@ -20,8 +20,16 @@ const STRING_PATTERNS = [
     [/\b1\/\/[A-Za-z0-9._-]{8,}/g, REDACTED],
     // Google API keys
     [/\bAIza[0-9A-Za-z_-]{30,}/g, REDACTED],
-    // Anthropic / OpenAI style keys
+    // Anthropic / OpenAI style keys and Perplexity API keys
     [/\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}/g, REDACTED],
+    [/\bpplx-[A-Za-z0-9_-]{16,}/g, REDACTED],
+    // Google OAuth client secrets
+    [/\bGOCSPX-[A-Za-z0-9_-]{10,}/g, REDACTED],
+    // JWT / JWE values (e.g. next-auth session tokens): header.payload.signature
+    [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]+/g, REDACTED],
+    // Cookie pairs whose name marks a session or token: name=value. Name parts are bounded so
+    // the scan stays linear; "tokens" is excluded so e.g. "max_tokens=200000" survives.
+    [/\b([\w.-]{0,40}(?:session|token(?!s)|auth)[\w.-]{0,40}=)[^;\s"']{1,4096}/gi, `$1${REDACTED}`],
     // JSON fields with secret-looking names: "access_token":"..."
     [
         /"((?:access|refresh|id|session)?[-_]?token|accessToken|refreshToken|idToken|client[-_]?secret|clientSecret|api[-_]?key|apiKey|password|authorization|cookie)"\s*:\s*"[^"]*"/gi,

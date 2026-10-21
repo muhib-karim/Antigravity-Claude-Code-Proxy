@@ -3,13 +3,11 @@
  * Entry point - starts the proxy server
  */
 
-import { installConsoleRedaction } from './utils/redact.js';
+// Must stay the first import: tokens, API keys and cookies never reach stdout/stderr
+import './utils/install-redaction.js';
 import app from './server.js';
 import { DEFAULT_PORT, DEFAULT_HOST, SHUTDOWN_TIMEOUT_MS } from './constants.js';
 import { createGracefulShutdown } from './http/shutdown.js';
-
-// Tokens, API keys and cookies must never reach stdout/stderr (see src/utils/redact.js)
-installConsoleRedaction();
 
 const PORT = process.env.PORT || DEFAULT_PORT;
 const HOST = DEFAULT_HOST;

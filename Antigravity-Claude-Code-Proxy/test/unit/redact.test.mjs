@@ -32,6 +32,23 @@ describe('redactString', () => {
         assert.match(out, /\[REDACTED\]/);
     });
 
+    it('masks Perplexity keys, JWT session tokens, session cookies and OAuth client secrets', () => {
+        const pplx = ['pplx', 'synthetic0key0value0000000000'].join('-');
+        const jwt = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiJzeW50aGV0aWMifQ', 'c2lnbmF0dXJlMDAwMA'].join('.');
+        const clientSecret = ['GOCSPX', 'synthetic0secret0000000'].join('-');
+        const input = [
+            `perplexity key ${pplx}`,
+            `bare jwt ${jwt}`,
+            `Cookie: __Secure-next-auth.session-token=opaque0cookie0value; theme=dark`,
+            `secret ${clientSecret}`
+        ].join('\n');
+        const out = redactString(input);
+        for (const secret of [pplx, jwt, 'opaque0cookie0value', clientSecret]) {
+            assert.ok(!out.includes(secret), `leaked ${secret} in ${out}`);
+        }
+        assert.match(out, /theme=dark/, 'non-secret cookies are kept');
+    });
+
     it('masks JSON-style secret fields', () => {
         const out = redactString('{"access_token":"tok123","refreshToken":"r456","client_secret":"s789","name":"x"}');
         assert.ok(!/tok123|r456|s789/.test(out), out);
@@ -40,6 +57,18 @@ describe('redactString', () => {
 
     it('leaves ordinary text untouched', () => {
         assert.equal(redactString('Hello from the mock upstream'), 'Hello from the mock upstream');
+        assert.equal(redactString('max_tokens=200000 exceeds the limit'), 'max_tokens=200000 exceeds the limit');
+    });
+});
+
+describe('redactString performance', () => {
+    it('stays linear on long unbroken input', () => {
+        for (const text of ['a'.repeat(100_000), 'session'.repeat(20_000), 'eyJ' + 'x'.repeat(100_000)]) {
+            const started = process.hrtime.bigint();
+            redactString(text);
+            const ms = Number(process.hrtime.bigint() - started) / 1e6;
+            assert.ok(ms < 500, `took ${ms.toFixed(1)}ms`);
+        }
     });
 });
 
