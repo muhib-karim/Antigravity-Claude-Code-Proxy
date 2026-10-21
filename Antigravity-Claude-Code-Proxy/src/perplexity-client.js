@@ -96,7 +96,7 @@ export class PerplexityClient {
             }
 
             const apiKey = account.apiKey;
-            console.log(`[Perplexity] Using account ...${apiKey.slice(-5)} for ${payload.model}`);
+            console.log(`[Perplexity] Using the next available account for ${payload.model}`);
 
             try {
                 const response = await fetch(`${PERPLEXITY_BASE_URL}/chat/completions`, {
@@ -109,7 +109,7 @@ export class PerplexityClient {
                 });
 
                 if (response.status === 429 || response.status === 403) {
-                    console.warn(`[Perplexity] Rate limit/Quota hit for ...${apiKey.slice(-5)} (${response.status})`);
+                    console.warn(`[Perplexity] Rate limit/quota hit (${response.status}); rotating to the next account`);
                     await this.accountManager.markRateLimited(apiKey);
                     continue; // Retry with next account
                 }
@@ -124,7 +124,7 @@ export class PerplexityClient {
                 return this.convertToAnthropic(data);
 
             } catch (err) {
-                console.error(`[Perplexity] Error with account ...${apiKey.slice(-5)}:`, err.message);
+                console.error('[Perplexity] Request failed:', err.message);
                 // If network error, might want to retry? For now, if it's not rate limit, rethrow.
                 // But catching fetch errors (network) is good.
                 if (err.message.includes('fetch failed')) {
