@@ -5,7 +5,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSchemaForGemini } from '../../src/format/schema-sanitizer.js';
+import { cleanSchemaForGemini, sanitizeSchema } from '../../src/format/schema-sanitizer.js';
 
 const UNSUPPORTED = [
     '$schema',
@@ -118,5 +118,80 @@ describe('cleanSchemaForGemini', () => {
     it('passes non-objects through and maps arrays', () => {
         assert.equal(cleanSchemaForGemini(null), null);
         assert.deepEqual(cleanSchemaForGemini([{ type: 'string', title: 't' }]), [{ type: 'string' }]);
+    });
+});
+
+describe('cleanSchemaForGemini edge cases', () => {
+    const out = () =>
+        cleanSchemaForGemini({
+            type: 'object',
+            properties: {
+                tuple: { type: 'array', items: [{ type: 'string', minLength: 2 }, { type: ['integer', 'null'] }] },
+                union: { oneOf: [{ type: 'null' }, { type: 'array', items: { type: 'string' } }, { type: 'number' }] },
+                refItems: { type: 'array', items: { $ref: '#/definitions/Thing' } },
+                open: {}
+            }
+        }).properties;
+
+    it('cleans tuple-style items arrays element by element', () => {
+        assert.deepEqual(out().tuple.items, [
+            { type: 'string', description: 'minLength: 2' },
+            { type: 'integer', description: 'nullable' }
+        ]);
+    });
+
+    it('prefers the array option of a oneOf and ignores null in the hint', () => {
+        assert.deepEqual(out().union, {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Accepts: array | number'
+        });
+    });
+
+    it('turns $ref inside items into an object hint', () => {
+        assert.deepEqual(out().refItems.items, { type: 'object', description: 'See: Thing' });
+    });
+
+    it('leaves an empty schema alone', () => {
+        assert.deepEqual(out().open, {});
+    });
+});
+
+describe('sanitizeSchema (allow-list fallback)', () => {
+    const PLACEHOLDER = {
+        type: 'object',
+        properties: { reason: { type: 'string', description: 'Reason for calling this tool' } },
+        required: ['reason']
+    };
+
+    it('returns a placeholder object schema for missing or empty schemas', () => {
+        assert.deepEqual(sanitizeSchema(null), PLACEHOLDER);
+        assert.deepEqual(sanitizeSchema({ type: 'object', properties: {} }), PLACEHOLDER);
+    });
+
+    it('keeps only allow-listed keywords, recursively, including tuple items', () => {
+        const result = sanitizeSchema({
+            properties: {
+                b: { type: 'array', items: [{ type: 'string', format: 'uri' }] },
+                c: { type: 'array', items: { type: 'number', minimum: 1 } },
+                d: { type: 'object', properties: { e: { type: 'string' } }, additionalProperties: false }
+            },
+            required: ['b']
+        });
+        assert.deepEqual(result, {
+            type: 'object',
+            properties: {
+                b: { type: 'array', items: [{ type: 'string' }] },
+                c: { type: 'array', items: { type: 'number' } },
+                d: { type: 'object', properties: { e: { type: 'string' } } }
+            },
+            required: ['b']
+        });
+    });
+
+    it('turns const into a typed single-value enum instead of a placeholder object', () => {
+        assert.deepEqual(sanitizeSchema({ const: 'fixed' }), { type: 'string', enum: ['fixed'] });
+        assert.deepEqual(sanitizeSchema({ const: 3 }), { type: 'number', enum: [3] });
+        assert.deepEqual(sanitizeSchema({ enum: ['a', 'b'] }), { type: 'string', enum: ['a', 'b'] });
     });
 });

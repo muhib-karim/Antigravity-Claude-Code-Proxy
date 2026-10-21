@@ -552,7 +552,11 @@ export function sanitizeSchema(schema) {
 
     // Ensure we have at least a type
     if (!sanitized.type) {
-        sanitized.type = 'object';
+        // An enum/const without a type takes the type of its values; anything else is an object
+        const sample = Array.isArray(sanitized.enum) ? sanitized.enum[0] : undefined;
+        sanitized.type = typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean'
+            ? typeof sample
+            : 'object';
     }
 
     // If object type with no properties, add placeholder
