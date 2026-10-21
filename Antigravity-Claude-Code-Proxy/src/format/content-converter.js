@@ -22,9 +22,10 @@ export function convertRole(role) {
  * @param {string|Array} content - Anthropic message content
  * @param {boolean} isClaudeModel - Whether the model is a Claude model
  * @param {boolean} isGeminiModel - Whether the model is a Gemini model
+ * @param {Map<string, string>} [toolNames] - tool_use id -> tool name, used to name functionResponse parts
  * @returns {Array} Google Generative AI parts array
  */
-export function convertContentToParts(content, isClaudeModel = false, isGeminiModel = false) {
+export function convertContentToParts(content, isClaudeModel = false, isGeminiModel = false, toolNames = new Map()) {
     if (typeof content === 'string') {
         return [{ text: content }];
     }
@@ -123,7 +124,8 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
             }
 
             const functionResponse = {
-                name: block.tool_use_id || 'unknown',
+                // Gemini pairs responses with calls by function name; fall back to the id if the call is unknown
+                name: toolNames.get(block.tool_use_id) || block.tool_use_id || 'unknown',
                 response: responseContent
             };
 
