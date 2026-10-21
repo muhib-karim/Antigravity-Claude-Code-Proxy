@@ -13,10 +13,14 @@ Node.js/Express gateway that speaks the Anthropic Messages API and forwards to G
 - Node tests one process at a time; no watch mode.
 
 ## Status
-v2.11.0 slice 1 in progress on branch `upgrade/v2.11.0` (plan: `docs/superpowers/plans/2026-10-21-v2.11.0-slice1.md`).
+v2.11.0 slice 1 on `upgrade/v2.11.0`: resilience, error mapping, validation, hardening,
+metrics/health, graceful shutdown, 30-fixture conformance suite, coverage gate, @ts-check,
+CI (quality, matrix, gitleaks, audit, CodeQL, Dependabot) committed. 192 offline tests green.
 
 ## Next step
-Task 1 (tooling baseline), then resilience modules.
+Push, get CI + CodeQL green with 0 alerts; README provenance section + NOTICE. Then slice 2
+(Docker, README refresh, CHANGELOG/version, SKILLS_USED/TASKS/HANDOFF).
 
 ## Session log
 - 2026-10-21 20:05Z claude-code/opus-5.5: created brain + slice-1 plan; next: tooling baseline
+- 2026-10-21 21:10Z claude-code/opus-5.5: slice-1 code + CI committed (192 tests, cov 82.5%); next: push, CodeQL, provenance
