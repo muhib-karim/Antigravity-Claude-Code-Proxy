@@ -4,82 +4,183 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Antigravity Claude Code Proxy: many models behind Claude Code</title>
-<meta name="description" content="A local proxy that lets Claude Code use Gemini, GPT, Grok, Claude and more, with managed sessions, failover, a live dashboard and an IDE status bar.">
+<meta name="description" content="A local proxy that lets Claude Code use Gemini, GPT, Grok, Claude and more, with managed sessions, failover, a live dashboard and an IDE status bar. v2.11.0 adds a conformance suite, resilience, hardening, metrics and a Docker image.">
 <meta property="og:title" content="Antigravity Claude Code Proxy">
 <meta property="og:description" content="Use 20+ models from Claude Code through one local proxy, with failover, a dashboard and a status bar.">
 <meta property="og:image" content="images/banner.png">
+<meta name="color-scheme" content="dark">
 <style>
-:root{--bg:#0b0d12;--card:#141824;--line:#232a3b;--fg:#e7eaf2;--mut:#9aa3b8;--acc:#00d4aa;--acc2:#7c5cff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-a{color:var(--acc)}.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
-header{padding:28px 0 8px}.hero img{width:100%;border-radius:14px;border:1px solid var(--line)}
-h1{font-size:clamp(28px,4vw,44px);margin:28px 0 8px;line-height:1.15}h2{margin:48px 0 12px;font-size:26px}
+:root{--acc2-fill:#8466ff;--bg:#0b0d12;--card:#141824;--line:#232a3b;--fg:#e7eaf2;--mut:#a3abbf;--acc:#00d4aa;--acc2:#7c5cff;--code:#0f131c}
+*{box-sizing:border-box}
+html{scrollbar-color:var(--line) var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+::selection{background:rgba(0,212,170,.28);color:var(--fg)}
+a{color:var(--acc);text-underline-offset:3px;text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:6px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header{padding:28px 0 8px}.hero img{width:100%;height:auto;border-radius:14px;border:1px solid var(--line)}
+h1{font-size:clamp(28px,4vw,44px);margin:28px 0 8px;line-height:1.15;text-wrap:balance}
+h2{margin:64px 0 14px;font-size:26px;line-height:1.25;text-wrap:balance}
+h3{margin:28px 0 8px;font-size:18px}
+p{max-width:72ch}
 .lead{color:var(--mut);font-size:19px;max-width:760px}
-.btns{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0}.btn{padding:11px 18px;border-radius:10px;text-decoration:none;font-weight:600;border:1px solid var(--line);color:var(--fg)}
-.btn.p{background:linear-gradient(90deg,var(--acc),var(--acc2));color:#06110e;border:0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.release{display:inline-flex;align-items:center;gap:10px;margin-top:18px;padding:6px 12px 6px 6px;border:1px solid var(--line);border-radius:999px;color:var(--fg);text-decoration:none;font-size:14px}
+.release b{background:linear-gradient(90deg,var(--acc),var(--acc2-fill));color:#06110e;border-radius:999px;padding:2px 10px;font-size:13px}
+.release:hover{border-color:var(--acc)}
+.btns{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0}
+.btn{padding:11px 18px;border-radius:10px;text-decoration:none;font-weight:600;border:1px solid var(--line);color:var(--fg);transition:border-color .2s cubic-bezier(.16,1,.3,1),transform .2s cubic-bezier(.16,1,.3,1)}
+.btn:hover{border-color:var(--acc);transform:translateY(-1px)}
+.btn.p{background:linear-gradient(90deg,var(--acc),var(--acc2-fill));color:#06110e;border:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
 .card b{display:block;margin-bottom:4px}.card p{margin:0;color:var(--mut);font-size:15px}
-pre{background:#0f131c;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-size:14px}
-figure{margin:0}figure img{width:100%;border-radius:10px;border:1px solid var(--line);background:#0f131c}figcaption{color:var(--mut);font-size:14px;margin-top:6px}
-.flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.flow span{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
-footer{color:var(--mut);padding:40px 0;border-top:1px solid var(--line);margin-top:56px;font-size:14px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-size:14px;line-height:1.55}
+figure{margin:0}figure img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:var(--code)}
+figcaption{color:var(--mut);font-size:14px;margin-top:6px}
+.diagram{background:var(--code);border:1px solid var(--line);border-radius:14px;padding:18px;overflow-x:auto}
+.diagram svg{display:block;width:100%;min-width:640px;height:auto}
+.proof{width:100%;border-collapse:collapse;font-size:15px;font-variant-numeric:tabular-nums}
+.proof th,.proof td{text-align:left;vertical-align:top;padding:12px 14px;border-bottom:1px solid var(--line)}
+.proof th{color:var(--mut);font-weight:600;font-size:13px;letter-spacing:.02em}
+.proof td:first-child{font-weight:600;white-space:nowrap}
+.proof td:nth-child(2){color:var(--mut)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:4px 8px}
+.note{color:var(--mut);font-size:15px}
+footer{color:var(--mut);padding:40px 0;border-top:1px solid var(--line);margin-top:64px;font-size:14px}
+footer p{margin:4px 0}
+@media (max-width:640px){
+.proof thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.proof,.proof tbody,.proof tr,.proof td{display:block;width:100%}
+.proof tr{padding:14px 16px;border-bottom:1px solid var(--line)}
+.proof tr:last-child{border-bottom:0}
+.proof td{padding:0;border:0}
+.proof td:first-child{white-space:normal;margin-bottom:4px}
+.proof td:nth-child(3){margin-top:8px;font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header class="hero"><img src="images/banner.png" alt="Antigravity Claude Code Proxy banner"></header>
+<header class="hero"><img src="images/banner.png" alt="Antigravity Claude Code Proxy banner" width="1024" height="1024"></header>
+<a class="release" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/RELEASE_NOTES_v2.11.0.md"><b>v2.11.0</b> Conformance suite, resilience, hardening, metrics and Docker</a>
 <h1>Run Claude Code on 20+ models.</h1>
 <p class="lead">A local proxy at <code>localhost:8080</code> that speaks the Anthropic Messages API, so Claude Code can use Gemini, GPT, Grok, Claude, Kimi and Perplexity search models, with managed sessions, automatic failover, a live dashboard and a status bar in your IDE.</p>
 <div class="btns">
-<a class="btn p" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#-quick-start">Quick start</a>
+<a class="btn p" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#quick-start">Quick start</a>
 <a class="btn" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/releases/latest">Latest release</a>
 <a class="btn" href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status">Status bar extension</a>
 <a class="btn" href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy">Source on GitHub</a>
 </div>
 
-<h2>How it works</h2>
-<div class="flow"><span>Claude Code CLI / extension</span>→<span>Antigravity proxy · localhost:8080</span>→<span>Google AI (Gemini) · Perplexity · more</span></div>
+<h2 id="how-it-works">How it works</h2>
+<p>Claude Code sends Anthropic Messages requests to the proxy. The proxy validates them, picks a model and a signed-in account, translates the request for the upstream and streams the reply back as Anthropic server-sent events. Transient upstream failures are retried with backoff before the first event reaches the client; after that, the stream is never replayed.</p>
+<div class="diagram" role="img" aria-label="Request path: Claude Code to the proxy (validation, routing, account pool, retries) to the upstream; replies stream back as Anthropic SSE events">
+<svg viewBox="0 0 960 300" xmlns="http://www.w3.org/2000/svg" fill="none" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9aa3b8"/></marker>
+<marker id="ahs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#00d4aa"/></marker>
+</defs>
+<rect x="10" y="90" width="170" height="110" rx="12" fill="#141824" stroke="#232a3b"/>
+<text x="95" y="135" fill="#e7eaf2" font-size="16" font-weight="600" text-anchor="middle">Claude Code</text>
+<text x="95" y="158" fill="#a3abbf" font-size="13" text-anchor="middle">CLI or IDE extension</text>
+<rect x="250" y="20" width="460" height="260" rx="14" fill="#141824" stroke="#7c5cff" stroke-opacity=".6"/>
+<text x="480" y="48" fill="#e7eaf2" font-size="16" font-weight="600" text-anchor="middle">Proxy · localhost:8080</text>
+<g font-size="13" fill="#e7eaf2">
+<rect x="272" y="66" width="130" height="54" rx="9" fill="#0f131c" stroke="#232a3b"/><text x="337" y="91" text-anchor="middle">Validate</text><text x="337" y="108" text-anchor="middle" fill="#a3abbf" font-size="11">400 / 413</text>
+<rect x="415" y="66" width="130" height="54" rx="9" fill="#0f131c" stroke="#232a3b"/><text x="480" y="91" text-anchor="middle">Route model</text><text x="480" y="108" text-anchor="middle" fill="#a3abbf" font-size="11">aliases · sessions</text>
+<rect x="558" y="66" width="130" height="54" rx="9" fill="#0f131c" stroke="#232a3b"/><text x="623" y="91" text-anchor="middle">Translate</text><text x="623" y="108" text-anchor="middle" fill="#a3abbf" font-size="11">Anthropic ↔ Google</text>
+<rect x="272" y="140" width="200" height="54" rx="9" fill="#0f131c" stroke="#232a3b"/><text x="372" y="165" text-anchor="middle">Account pool</text><text x="372" y="182" text-anchor="middle" fill="#a3abbf" font-size="11">sticky · cooldown · rotation</text>
+<rect x="488" y="140" width="200" height="54" rx="9" fill="#0f131c" stroke="#232a3b"/><text x="588" y="165" text-anchor="middle">Retry + backoff</text><text x="588" y="182" text-anchor="middle" fill="#a3abbf" font-size="11">jitter · Retry-After · timeouts</text>
+<rect x="272" y="212" width="416" height="50" rx="9" fill="#0f131c" stroke="#00d4aa" stroke-opacity=".55"/><text x="480" y="234" text-anchor="middle">SSE stream back to the client</text><text x="480" y="251" text-anchor="middle" fill="#a3abbf" font-size="11">message_start → content blocks → message_delta → message_stop</text>
+</g>
+<rect x="780" y="90" width="170" height="110" rx="12" fill="#141824" stroke="#232a3b"/>
+<text x="865" y="130" fill="#e7eaf2" font-size="16" font-weight="600" text-anchor="middle">Upstream</text>
+<text x="865" y="153" fill="#a3abbf" font-size="13" text-anchor="middle">Google Cloud Code</text>
+<text x="865" y="172" fill="#a3abbf" font-size="13" text-anchor="middle">Perplexity</text>
+<path d="M180 128H244" stroke="#9aa3b8" stroke-width="1.5" marker-end="url(#ah)"/>
+<path d="M710 128H774" stroke="#9aa3b8" stroke-width="1.5" marker-end="url(#ah)"/>
+<path d="M780 180Q740 237 694 237" stroke="#00d4aa" stroke-width="1.5" marker-end="url(#ahs)"/>
+<path d="M272 237Q216 237 186 182" stroke="#00d4aa" stroke-width="1.5" marker-end="url(#ahs)"/>
+<text x="212" y="118" fill="#a3abbf" font-size="11" text-anchor="middle">POST</text>
+<text x="742" y="118" fill="#a3abbf" font-size="11" text-anchor="middle">HTTPS</text>
+</svg>
+</div>
 
-<h2>Features</h2>
+<h2 id="features">Features</h2>
 <div class="grid">
 <div class="card"><b>Multi-provider</b><p>Gemini, GPT, Grok, Claude, Kimi and more through one Anthropic-compatible endpoint.</p></div>
 <div class="card"><b>Session failover</b><p>Keeps requests on a stable signed-in session and moves to another when one is unavailable.</p></div>
 <div class="card"><b>Live dashboard</b><p>Accounts, usage and one-click model switching at <code>localhost:8080/dashboard</code>.</p></div>
 <div class="card"><b>IDE status bar</b><p>Current model and quotas with reset times, right in VS Code or Antigravity.</p></div>
 <div class="card"><b>Agentic fallback</b><p>Chat-only models switch to an agentic model automatically when tools are needed.</p></div>
-<div class="card"><b>Offline test suite</b><p>Lint and tests run in CI on Node 20 and 22 with no accounts, keys or network.</p></div>
+<div class="card"><b>Runs anywhere</b><p>Node.js 20+ or a non-root Docker image with a healthcheck, probes and Prometheus metrics.</p></div>
 </div>
 
-<h2>Showcase</h2>
+<h2 id="verified">What v2.11.0 verifies</h2>
+<p>Every claim below is checked in CI on Node 20 and 22 against a scripted mock upstream with synthetic fixtures. No provider accounts, keys or network access are involved, so these checks show protocol behaviour, not live model access.</p>
+<div class="tablewrap">
+<table class="proof">
+<thead><tr><th scope="col">Area</th><th scope="col">What is checked</th><th scope="col">Evidence</th></tr></thead>
+<tbody>
+<tr><td>Anthropic conformance</td><td>Request and response mapping, SSE event order, tool_use and tool_result round-trips, system prompts, stop reasons, usage fields, thinking models</td><td><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/tree/main/Antigravity-Claude-Code-Proxy/test/fixtures/conformance">37 JSON fixtures</a></td></tr>
+<tr><td>Error mapping</td><td>400, 401, 403, 404, 413, 429, 502, 504 and 529 as Anthropic error types, with <code>retry-after</code> when the reset is known, including on streaming requests</td><td><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/Antigravity-Claude-Code-Proxy/src/http/error-mapper.js">error-mapper.js</a></td></tr>
+<tr><td>Resilience</td><td>Exponential backoff with jitter, Retry-After, bounded timeouts, no replay of a started stream, cancellation on client disconnect, account cooldown and rotation, graceful shutdown that drains streams</td><td><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/tree/main/Antigravity-Claude-Code-Proxy/test/unit">unit</a> and <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/tree/main/Antigravity-Claude-Code-Proxy/test/integration">integration</a> tests</td></tr>
+<tr><td>Hardening</td><td>Request validation, body size limit, routing-header allow-list, credentials never forwarded upstream, secrets redacted from logs, security headers, rate limiting, linear-time parsing of prompt text</td><td><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/Antigravity-Claude-Code-Proxy/test/integration/hardening.test.mjs">hardening tests</a></td></tr>
+<tr><td>Quality gates</td><td>222 offline tests, coverage gate of 80% for lines, statements, functions and branches, <code>tsc --noEmit</code>, ESLint, Prettier, CodeQL with zero open alerts, gitleaks, <code>npm audit</code></td><td><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/actions/workflows/ci.yml">CI runs</a></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="showcase">Showcase</h2>
 <div class="grid">
-<figure><img src="images/dashboard.png" alt="Dashboard" loading="lazy"><figcaption>Dashboard: session health and usage</figcaption></figure>
-<figure><img src="images/quota-popup.png" alt="Quota popup" loading="lazy"><figcaption>Quotas with reset times</figcaption></figure>
-<figure><img src="images/model-switcher.png" alt="Model switcher" loading="lazy"><figcaption>One-click model switching</figcaption></figure>
+<figure><img src="images/dashboard.png" alt="Dashboard showing session health and usage" loading="lazy"><figcaption>Dashboard: session health and usage</figcaption></figure>
+<figure><img src="images/quota-popup.png" alt="Quota popup with reset times" loading="lazy"><figcaption>Quotas with reset times</figcaption></figure>
+<figure><img src="images/model-switcher.png" alt="One-click model switcher" loading="lazy"><figcaption>One-click model switching</figcaption></figure>
 </div>
 
-<h2>Quick start</h2>
+<h2 id="quick-start">Quick start</h2>
+<h3>With Node.js 20+</h3>
 <pre><code>git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git
 cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
 npm install
 export GOOGLE_OAUTH_CLIENT_SECRET="&lt;your OAuth client secret&gt;"
 npm run accounts:add          # Google sign-in in your browser
-npm start                     # proxy on http://localhost:8080
-
-export ANTHROPIC_BASE_URL="http://localhost:8080"
+npm start                     # proxy on http://localhost:8080</code></pre>
+<h3>With Docker</h3>
+<pre><code>docker build -t antigravity-claude-code-proxy \
+  Antigravity-Claude-Code-Proxy
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -v agp-data:/data antigravity-claude-code-proxy
+# accounts live in the volume at /data/accounts.json</code></pre>
+<h3>Point Claude Code at it</h3>
+<pre><code>export ANTHROPIC_BASE_URL="http://localhost:8080"
 export ANTHROPIC_API_KEY="antigravity-proxy"
 claude                        # Claude Code now goes through the proxy</code></pre>
 
-<h2>Docs</h2>
+<h2 id="operations">Operations</h2>
+<div class="grid">
+<div class="card"><b><code>GET /livez</code></b><p>The process is up. Stays 200 while a shutdown drains.</p></div>
+<div class="card"><b><code>GET /readyz</code></b><p>At least one account can serve requests; 503 otherwise or while draining.</p></div>
+<div class="card"><b><code>GET /metrics</code></b><p>Prometheus text: requests, latency, upstream retries and account states.</p></div>
+</div>
+
+<h2 id="docs">Docs</h2>
 <div class="grid">
 <div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/docs/QUICK_START.md">Quick start</a></b><p>The shortest path to a working setup.</p></div>
 <div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/docs/STEP_BY_STEP_SETUP.md">Step-by-step setup</a></b><p>Every step, with checks along the way.</p></div>
 <div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/docs/MULTI_GOOGLE_AI_ACCOUNTS_SETUP.md">Multiple accounts</a></b><p>Add more Google AI accounts for failover.</p></div>
 <div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/SECURITY.md">Security</a></b><p>How credentials are stored and what never leaves your machine.</p></div>
 <div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/blob/main/CHANGELOG.md">Changelog</a></b><p>What changed in each release.</p></div>
-<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#-api-reference">API reference</a></b><p>Endpoints the proxy exposes.</p></div>
+<div class="card"><b><a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#main-endpoints">API reference</a></b><p>Endpoints the proxy exposes.</p></div>
 </div>
 
-<footer>MIT licensed · <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy">GitHub</a> · <a href="https://ko-fi.com/ai_dev_2024">Support on Ko-fi</a></footer>
+<footer>
+<p>MIT licensed · <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy">GitHub</a> · <a href="https://ko-fi.com/ai_dev_2024">Support on Ko-fi</a></p>
+<p>Built on <a href="https://github.com/badrisnarayanan/antigravity-claude-proxy">antigravity-claude-proxy</a> by Badri Narayanan S (MIT). See <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy#upstream-and-what-this-fork-adds">what this fork adds</a>.</p>
+</footer>
 </div>
 </body>
 </html>
