@@ -686,16 +686,16 @@ app.delete('/google-accounts/:email', async (req, res) => {
 import { getAuthorizationUrl, startCallbackServer, completeOAuthFlow, closeCallbackServer } from './oauth.js';
 
 // Track multiple OAuth flows by state (enables back-to-back logins)
-const oauthFlows = new Map();
+const signInFlows = new Map();
 const OAUTH_FLOW_TIMEOUT_MS = 180000; // 3 minutes - auto-cleanup stale flows
 
 // Helper to cleanup stale OAuth flows
 function cleanupStaleOAuthFlows() {
     const now = Date.now();
-    for (const [state, flow] of oauthFlows) {
+    for (const [state, flow] of signInFlows) {
         if (now - flow.startedAt > OAUTH_FLOW_TIMEOUT_MS) {
-            console.log(`[OAuth] Cleaning up stale flow ${state.slice(0, 8)}...`);
-            oauthFlows.delete(state);
+            console.log('[OAuth] Cleaning up a stale sign-in flow');
+            signInFlows.delete(state);
         }
     }
 }
@@ -709,15 +709,15 @@ app.get('/oauth/start', async (req, res) => {
         const { url, verifier, state } = getAuthorizationUrl();
 
         // Store this flow (allows multiple concurrent flows)
-        oauthFlows.set(state, { verifier, startedAt: Date.now() });
-        console.log(`[OAuth] Started flow ${state.slice(0, 8)}... (${oauthFlows.size} active)`);
+        signInFlows.set(state, { verifier, startedAt: Date.now() });
+        console.log(`[OAuth] Started a sign-in flow (${signInFlows.size} active)`);
 
         // Start callback server in background (will handle any registered state)
         startCallbackServer(state, 120000).then(async (code) => {
             // Find the flow by state
-            const flow = oauthFlows.get(state);
+            const flow = signInFlows.get(state);
             if (!flow) {
-                console.log(`[OAuth] Flow ${state.slice(0, 8)}... already completed or cancelled`);
+                console.log('[OAuth] Sign-in flow already completed or cancelled');
                 return;
             }
 
@@ -738,11 +738,11 @@ app.get('/oauth/start', async (req, res) => {
             } catch (err) {
                 console.error('[OAuth] Failed to complete flow:', err.message);
             } finally {
-                oauthFlows.delete(state);
+                signInFlows.delete(state);
             }
         }).catch(err => {
             console.error('[OAuth] Callback error:', err.message);
-            oauthFlows.delete(state);
+            signInFlows.delete(state);
         });
 
         // Redirect user to Google OAuth
@@ -758,16 +758,16 @@ app.get('/oauth/start', async (req, res) => {
 app.get('/oauth/status', (req, res) => {
     cleanupStaleOAuthFlows();
     res.json({
-        inProgress: oauthFlows.size > 0,
-        activeFlows: oauthFlows.size,
-        startedAt: oauthFlows.size > 0 ? [...oauthFlows.values()][0]?.startedAt : null
+        inProgress: signInFlows.size > 0,
+        activeFlows: signInFlows.size,
+        startedAt: signInFlows.size > 0 ? [...signInFlows.values()][0]?.startedAt : null
     });
 });
 
 // Cancel all OAuth flows
 app.delete('/oauth/cancel', (req, res) => {
-    const count = oauthFlows.size;
-    oauthFlows.clear();
+    const count = signInFlows.size;
+    signInFlows.clear();
     closeCallbackServer();
     res.json({ success: true, message: `Cancelled ${count} OAuth flow(s)` });
 });

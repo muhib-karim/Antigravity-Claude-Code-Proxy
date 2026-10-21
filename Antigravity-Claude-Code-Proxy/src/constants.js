@@ -290,23 +290,32 @@ export function isThinkingModel(modelName) {
 const DEFAULT_OAUTH_CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
 // The client secret is not stored in the repository: set GOOGLE_OAUTH_CLIENT_SECRET in the environment (or .env).
 
-// Google OAuth configuration
+// Google sign-in settings. None of these are secret: they appear in the sign-in URL the
+// user opens. They are kept apart from the client secret so code that prints the URL or
+// the callback port never reads from the object that holds the secret.
+export const SIGN_IN_CLIENT_ID = getEnv('GOOGLE_OAUTH_CLIENT_ID', DEFAULT_OAUTH_CLIENT_ID);
+export const SIGN_IN_PAGE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+export const SIGN_IN_CALLBACK_PORT = getEnvInt('OAUTH_CALLBACK_PORT', 51121);
+export const SIGN_IN_REDIRECT_URI = `http://localhost:${SIGN_IN_CALLBACK_PORT}/oauth-callback`;
+export const SIGN_IN_SCOPES = [
+    'https://www.googleapis.com/auth/cloud-platform',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/cclog',
+    'https://www.googleapis.com/auth/experimentsandconfigs'
+];
+
+// Google OAuth configuration (token exchange; holds the client secret)
 export const OAUTH_CONFIG = {
-    clientId: getEnv('GOOGLE_OAUTH_CLIENT_ID', DEFAULT_OAUTH_CLIENT_ID),
+    clientId: SIGN_IN_CLIENT_ID,
     clientSecret: getEnv('GOOGLE_OAUTH_CLIENT_SECRET', ''),
-    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    authUrl: SIGN_IN_PAGE_URL,
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
-    callbackPort: getEnvInt('OAUTH_CALLBACK_PORT', 51121),
-    scopes: [
-        'https://www.googleapis.com/auth/cloud-platform',
-        'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/userinfo.profile',
-        'https://www.googleapis.com/auth/cclog',
-        'https://www.googleapis.com/auth/experimentsandconfigs'
-    ]
+    callbackPort: SIGN_IN_CALLBACK_PORT,
+    scopes: SIGN_IN_SCOPES
 };
-export const OAUTH_REDIRECT_URI = `http://localhost:${OAUTH_CONFIG.callbackPort}/oauth-callback`;
+export const OAUTH_REDIRECT_URI = SIGN_IN_REDIRECT_URI;
 
 export default {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
