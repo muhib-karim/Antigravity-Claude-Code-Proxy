@@ -15,6 +15,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 # Version 2.x — Extension + Proxy
 
+## [2.11.0] - 2026-10-21
+
+Conformance, resilience and hardening release. Everything is verified offline against a mock upstream; see [RELEASE_NOTES_v2.11.0.md](RELEASE_NOTES_v2.11.0.md).
+
+### Added
+- **Conformance suite**: 37 synthetic JSON fixtures (`test/fixtures/conformance/`) replayed against the real proxy and a scripted mock Cloud Code upstream. They cover request/response mapping, SSE event order, tool_use/tool_result round-trips, system prompts, stop reasons, usage fields, thinking models, 4xx/5xx/429 mapping with `retry-after`, timeouts, request validation and the header allow-list.
+- **Resilience**: exponential backoff with full jitter and `Retry-After` support (`src/resilience/backoff.js`). 5xx, network and timeout failures are retried up to `UPSTREAM_RETRIES` times per request; timeouts at most once. A stream that has already reached the client is never retried. Retries stop when the client disconnects.
+- **Error mapping** to Anthropic error types (400/401/403/404/413/429/502/504/529) with a `retry-after` header when the reset time is known (`src/http/error-mapper.js`). Exhausted quota stays a 400 by default; `RATE_LIMIT_STATUS=429` opts into 429.
+- **Operability**: `GET /livez`, `GET /readyz` and `GET /metrics` (Prometheus text: requests, latency, upstream retries, account states). Graceful shutdown drains in-flight SSE streams; a second signal forces exit.
+- **Hardening**: request validation with one clear 400 listing every problem, JSON 400/413 for malformed or oversized bodies (`REQUEST_BODY_LIMIT`, default `32mb`), an allow-list for routing headers, client credentials never forwarded upstream, secret redaction for console and log file, helmet-style security headers, and a per-client rate limit for management endpoints (`MANAGEMENT_RATE_LIMIT`).
+- **Docker**: multi-stage image that runs as the non-root `node` user, with a healthcheck. CI builds it and smoke-runs it.
+- **Quality gates**: `// @ts-check` + `tsc --noEmit`, ESLint and Prettier checks, c8 coverage gate (80% lines, statements, functions and branches on the core request path), CodeQL, Dependabot (npm, actions, Docker), Node 20 + 22 matrix.
+- **Release workflow** (`.github/workflows/release.yml`): a `vX.Y.Z` tag builds the GitHub release from committed release notes and marks it Latest.
+
+### Fixed
+- Array `system` prompts (what Claude Code sends) were forwarded as `"[object Object]"`.
+- `stop_sequences` were dropped.
+- `tool_result` blocks were sent to Gemini named after the tool_use id instead of the tool.
+- Tool-schema hints were appended twice. `const` reached Gemini unconverted. `sanitizeSchema` turned typeless enums into placeholder objects.
+- An upstream 401 ended in "Max retries exceeded". It now retries once with a fresh token, then returns 401.
+- Streaming requests that failed before the first event returned 200 with an in-stream error. They now get the real status and `retry-after`.
+
+### Security
+- The natural-language model-switch regexes ran in quadratic time on prompt text (ReDoS); they are now linear.
+- Perplexity API key fragments and OAuth state fragments are no longer logged. Sign-in settings are kept apart from the OAuth client secret.
+- Redaction covers Google, Anthropic and Perplexity keys, OAuth access and refresh tokens, JWT/cookie session tokens and OAuth client secrets.
+
+### Changed
+- `package.json` version now follows the proxy release scheme (`2.11.0`; it previously carried `4.1.0`). Node.js 20+ is required.
+- Extension releases use `ext-vX.Y.Z` tags (`publish.yml`, `auto-release.yml`); `vX.Y.Z` tags are proxy releases only. Open VSX publishing is skipped when `OVSX_PAT` is missing or the version is already published.
+
+---
+
 ## [2.10.0] - 2026-10-03
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "antigravity-claude-code-proxy",
-  "version": "4.1.0",
+  "version": "2.11.0",
   "description": "Multi-provider AI gateway for Claude Code - Use Gemini, GPT-5, Grok with status bar integration",
   "main": "src/index.js",
   "type": "module",
