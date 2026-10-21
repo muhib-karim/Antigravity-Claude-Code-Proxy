@@ -78,4 +78,12 @@ jobs:
           else
             gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE" --verify-tag --latest
           fi
-          gh release view "$TAG" --json tagName,isLatest,url --jq '"\(.tagName) latest=\(.isLatest) \(.url)"' >> "$GITHUB_STEP_SUMMARY"
+          # Verify through the REST API: older gh releases on the runner lack the isLatest JSON field
+          url=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .html_url)
+          latest_tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          is_latest=false
+          if [ "$latest_tag" = "$TAG" ]; then is_latest=true; fi
+          echo "Release $TAG: $url (latest=$is_latest)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$is_latest" != "true" ]; then
+            echo "::error::$TAG is not the Latest release (Latest is ${latest_tag:-none})"; exit 1
+          fi
