@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Shared Utility Functions
  *

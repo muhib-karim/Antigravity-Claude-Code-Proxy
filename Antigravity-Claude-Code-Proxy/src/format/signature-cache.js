@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Signature Cache
  * In-memory cache for Gemini thoughtSignatures

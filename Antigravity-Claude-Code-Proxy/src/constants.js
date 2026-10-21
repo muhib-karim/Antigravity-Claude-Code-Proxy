@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Constants for Antigravity Cloud Code API integration
  * Based on: https://github.com/NoeFabris/opencode-antigravity-auth
@@ -20,7 +21,8 @@ config();
  * @returns {string|undefined} The environment variable value or default
  */
 function getEnv(name, defaultValue = undefined) {
-    return process.env[name] ?? defaultValue;
+    const value = process.env[name] ?? defaultValue;
+    return value === undefined ? undefined : String(value);
 }
 
 /**
@@ -71,8 +73,9 @@ const ANTIGRAVITY_ENDPOINT_PROD = 'https://cloudcode-pa.googleapis.com';
 
 // Endpoint fallback order (daily → prod)
 // Can be overridden with a comma-separated CLOUDCODE_ENDPOINTS list (e.g. for a local mock in tests)
-export const ANTIGRAVITY_ENDPOINT_FALLBACKS = getEnv('CLOUDCODE_ENDPOINTS')
-    ? getEnv('CLOUDCODE_ENDPOINTS').split(',').map(e => e.trim().replace(/\/+$/, '')).filter(Boolean)
+const ENDPOINT_OVERRIDE = getEnv('CLOUDCODE_ENDPOINTS');
+export const ANTIGRAVITY_ENDPOINT_FALLBACKS = ENDPOINT_OVERRIDE
+    ? ENDPOINT_OVERRIDE.split(',').map(e => e.trim().replace(/\/+$/, '')).filter(Boolean)
     : [
         ANTIGRAVITY_ENDPOINT_DAILY,
         ANTIGRAVITY_ENDPOINT_PROD
@@ -255,7 +258,7 @@ export const MODEL_ALIASES = {
  */
 export function resolveModelAlias(modelName) {
     const lower = (modelName || '').toLowerCase().trim();
-    return MODEL_ALIASES[lower] || modelName;
+    return /** @type {Record<string, string>} */ (MODEL_ALIASES)[lower] || modelName;
 }
 
 /**

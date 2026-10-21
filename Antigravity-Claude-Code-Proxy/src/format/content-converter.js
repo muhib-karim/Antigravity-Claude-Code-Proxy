@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Content Converter
  * Converts Anthropic message content to Google Generative AI parts format
@@ -19,11 +20,11 @@ export function convertRole(role) {
 
 /**
  * Convert Anthropic message content to Google Generative AI parts
- * @param {string|Array} content - Anthropic message content
+ * @param {string|Array<any>} content - Anthropic message content
  * @param {boolean} isClaudeModel - Whether the model is a Claude model
  * @param {boolean} isGeminiModel - Whether the model is a Gemini model
  * @param {Map<string, string>} [toolNames] - tool_use id -> tool name, used to name functionResponse parts
- * @returns {Array} Google Generative AI parts array
+ * @returns {Array<any>} Google Generative AI parts array
  */
 export function convertContentToParts(content, isClaudeModel = false, isGeminiModel = false, toolNames = new Map()) {
     if (typeof content === 'string') {
@@ -81,6 +82,7 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
         } else if (block.type === 'tool_use') {
             // Convert tool_use to functionCall (Google format)
             // For Claude models, include the id field
+            /** @type {Record<string, any>} */
             const functionCall = {
                 name: block.name,
                 args: block.input || {}
@@ -91,6 +93,7 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
             }
 
             // Build the part with functionCall
+            /** @type {Record<string, any>} */
             const part = { functionCall };
 
             // For Gemini models, include thoughtSignature at the part level
@@ -123,6 +126,7 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
                 responseContent = { result: texts };
             }
 
+            /** @type {Record<string, any>} */
             const functionResponse = {
                 // Gemini pairs responses with calls by function name; fall back to the id if the call is unknown
                 name: toolNames.get(block.tool_use_id) || block.tool_use_id || 'unknown',
