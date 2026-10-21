@@ -16,7 +16,8 @@ import { PerplexitySessionAccountManager } from './perplexity-session-account-ma
 import { getLoginService } from './perplexity-browser-login.js';
 import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
-import { REQUEST_BODY_LIMIT, DEFAULT_HOST, resolveModelAlias } from './constants.js';
+import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, resolveModelAlias } from './constants.js';
+import { mapError } from './http/error-mapper.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
 import fs from 'fs';
@@ -782,47 +783,21 @@ app.get('/perplexity-stats', async (req, res) => {
 });
 
 /**
- * Parse error message to extract error type, status code, and user-friendly message
+ * Send an Anthropic-style error response (or an SSE error event once streaming has started).
+ * @param {import('express').Response} res
+ * @param {unknown} error
+ * @param {{status?: number, type?: string, message?: string}} [override] - Replace parts of the mapped error
  */
-function parseError(error) {
-    let errorType = 'api_error';
-    let statusCode = 500;
-    let errorMessage = error.message;
-
-    if (error.message.includes('401') || error.message.includes('UNAUTHENTICATED')) {
-        errorType = 'authentication_error';
-        statusCode = 401;
-        errorMessage = 'Authentication failed. Make sure Antigravity is running with a valid token.';
-    } else if (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED') || error.message.includes('QUOTA_EXHAUSTED')) {
-        errorType = 'invalid_request_error';  // Use invalid_request_error to force client to purge/stop
-        statusCode = 400;  // Use 400 to ensure client does not retry (429 and 529 trigger retries)
-
-        // Try to extract the quota reset time from the error
-        const resetMatch = error.message.match(/quota will reset after (\d+h\d+m\d+s|\d+m\d+s|\d+s)/i);
-        const modelMatch = error.message.match(/"model":\s*"([^"]+)"/);
-        const model = modelMatch ? modelMatch[1] : 'the model';
-
-        if (resetMatch) {
-            errorMessage = `You have exhausted your capacity on ${model}. Quota will reset after ${resetMatch[1]}.`;
-        } else {
-            errorMessage = `You have exhausted your capacity on ${model}. Please wait for your quota to reset.`;
-        }
-    } else if (error.message.includes('invalid_request_error') || error.message.includes('INVALID_ARGUMENT')) {
-        errorType = 'invalid_request_error';
-        statusCode = 400;
-        const msgMatch = error.message.match(/"message":"([^"]+)"/);
-        if (msgMatch) errorMessage = msgMatch[1];
-    } else if (error.message.includes('All endpoints failed')) {
-        errorType = 'api_error';
-        statusCode = 503;
-        errorMessage = 'Unable to connect to Claude API. Check that Antigravity is running.';
-    } else if (error.message.includes('PERMISSION_DENIED')) {
-        errorType = 'permission_error';
-        statusCode = 403;
-        errorMessage = 'Permission denied. Check your Antigravity license.';
+function sendError(res, error, override = {}) {
+    const mapped = { ...mapError(error, { rateLimitStatus: RATE_LIMIT_STATUS }), ...override };
+    const payload = { type: 'error', error: { type: mapped.type, message: mapped.message } };
+    if (res.headersSent) {
+        res.write(`event: error\ndata: ${JSON.stringify(payload)}\n\n`);
+        res.end();
+        return;
     }
-
-    return { errorType, statusCode, errorMessage };
+    if (mapped.retryAfterSeconds) res.setHeader('retry-after', String(mapped.retryAfterSeconds));
+    res.status(mapped.status).json(payload);
 }
 
 // Request logging middleware
@@ -1538,11 +1513,7 @@ app.post('/v1/messages', async (req, res) => {
                 }
             } catch (err) {
                 console.error('[API] Perplexity Error:', err);
-                const { errorType, errorMessage } = parseError(err);
-                res.status(500).json({
-                    type: 'error',
-                    error: { type: errorType, message: errorMessage }
-                });
+                sendError(res, err);
             }
         } else if (stream) {
             // Handle streaming response
@@ -1569,14 +1540,7 @@ app.post('/v1/messages', async (req, res) => {
 
             } catch (streamError) {
                 console.error('[API] Stream error:', streamError);
-
-                const { errorType, errorMessage } = parseError(streamError);
-
-                res.write(`event: error\ndata: ${JSON.stringify({
-                    type: 'error',
-                    error: { type: errorType, message: errorMessage }
-                })}\n\n`);
-                res.end();
+                sendError(res, streamError);
             }
 
         } else {
@@ -1592,40 +1556,24 @@ app.post('/v1/messages', async (req, res) => {
     } catch (error) {
         console.error('[API] Error:', error);
 
-        let { errorType, statusCode, errorMessage } = parseError(error);
+        const mapped = mapError(error, { rateLimitStatus: RATE_LIMIT_STATUS });
+        let message = mapped.message;
 
         // For auth errors, try to refresh token
-        if (errorType === 'authentication_error') {
+        if (mapped.type === 'authentication_error') {
             console.log('[API] Token might be expired, attempting refresh...');
             try {
                 accountManager.clearProjectCache();
                 accountManager.clearTokenCache();
                 await forceRefresh();
-                errorMessage = 'Token was expired and has been refreshed. Please retry your request.';
+                message = 'Token was expired and has been refreshed. Please retry your request.';
             } catch (refreshError) {
-                errorMessage = 'Could not refresh token. Make sure Antigravity is running.';
+                message = 'Could not refresh token. Make sure Antigravity is running.';
             }
         }
 
-        console.log(`[API] Returning error response: ${statusCode} ${errorType} - ${errorMessage}`);
-
-        // Check if headers have already been sent (for streaming that failed mid-way)
-        if (res.headersSent) {
-            console.log('[API] Headers already sent, writing error as SSE event');
-            res.write(`event: error\ndata: ${JSON.stringify({
-                type: 'error',
-                error: { type: errorType, message: errorMessage }
-            })}\n\n`);
-            res.end();
-        } else {
-            res.status(statusCode).json({
-                type: 'error',
-                error: {
-                    type: errorType,
-                    message: errorMessage
-                }
-            });
-        }
+        console.log(`[API] Returning error response: ${mapped.status} ${mapped.type} - ${message}`);
+        sendError(res, error, { message });
     }
 });
 

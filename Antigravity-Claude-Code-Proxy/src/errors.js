@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Custom Error Classes
  *
@@ -13,7 +14,7 @@ export class AntigravityError extends Error {
      * @param {string} message - Error message
      * @param {string} code - Error code for programmatic handling
      * @param {boolean} retryable - Whether the error is retryable
-     * @param {Object} metadata - Additional error metadata
+     * @param {Object} [metadata] - Additional error metadata
      */
     constructor(message, code, retryable = false, metadata = {}) {
         super(message);
@@ -44,7 +45,7 @@ export class RateLimitError extends AntigravityError {
     /**
      * @param {string} message - Error message
      * @param {number|null} resetMs - Time in ms until rate limit resets
-     * @param {string} accountEmail - Email of the rate-limited account
+     * @param {string|null} [accountEmail] - Email of the rate-limited account
      */
     constructor(message, resetMs = null, accountEmail = null) {
         super(message, 'RATE_LIMITED', true, { resetMs, accountEmail });
@@ -60,8 +61,8 @@ export class RateLimitError extends AntigravityError {
 export class AuthError extends AntigravityError {
     /**
      * @param {string} message - Error message
-     * @param {string} accountEmail - Email of the account with auth issues
-     * @param {string} reason - Specific reason for auth failure
+     * @param {string|null} [accountEmail] - Email of the account with auth issues
+     * @param {string|null} [reason] - Specific reason for auth failure
      */
     constructor(message, accountEmail = null, reason = null) {
         super(message, 'AUTH_INVALID', false, { accountEmail, reason });
@@ -76,8 +77,8 @@ export class AuthError extends AntigravityError {
  */
 export class NoAccountsError extends AntigravityError {
     /**
-     * @param {string} message - Error message
-     * @param {boolean} allRateLimited - Whether all accounts are rate limited
+     * @param {string} [message] - Error message
+     * @param {boolean} [allRateLimited] - Whether all accounts are rate limited
      */
     constructor(message = 'No accounts available', allRateLimited = false) {
         super(message, 'NO_ACCOUNTS', allRateLimited, { allRateLimited });
@@ -91,8 +92,8 @@ export class NoAccountsError extends AntigravityError {
  */
 export class MaxRetriesError extends AntigravityError {
     /**
-     * @param {string} message - Error message
-     * @param {number} attempts - Number of attempts made
+     * @param {string} [message] - Error message
+     * @param {number} [attempts] - Number of attempts made
      */
     constructor(message = 'Max retries exceeded', attempts = 0) {
         super(message, 'MAX_RETRIES', false, { attempts });
@@ -109,12 +110,42 @@ export class ApiError extends AntigravityError {
      * @param {string} message - Error message
      * @param {number} statusCode - HTTP status code
      * @param {string} errorType - Type of API error
+     * @param {number|null} [retryAfterMs] - Server-requested wait (Retry-After), if any
      */
-    constructor(message, statusCode = 500, errorType = 'api_error') {
-        super(message, errorType.toUpperCase(), statusCode >= 500, { statusCode, errorType });
+    constructor(message, statusCode = 500, errorType = 'api_error', retryAfterMs = null) {
+        super(message, errorType.toUpperCase(), statusCode >= 500, { statusCode, errorType, retryAfterMs });
         this.name = 'ApiError';
         this.statusCode = statusCode;
         this.errorType = errorType;
+        this.retryAfterMs = retryAfterMs;
+    }
+}
+
+/**
+ * Upstream request exceeded its deadline (retryable, surfaced as 504)
+ */
+export class TimeoutError extends AntigravityError {
+    /**
+     * @param {number} timeoutMs - The deadline that was exceeded
+     */
+    constructor(timeoutMs) {
+        super(`Upstream request timed out after ${timeoutMs}ms`, 'TIMEOUT', true, { timeoutMs });
+        this.name = 'TimeoutError';
+        this.timeoutMs = timeoutMs;
+    }
+}
+
+/**
+ * Client request failed validation (surfaced as 400 invalid_request_error)
+ */
+export class RequestValidationError extends AntigravityError {
+    /**
+     * @param {string[]} problems - One human-readable line per problem
+     */
+    constructor(problems) {
+        super(problems.join('; '), 'INVALID_REQUEST', false, { problems });
+        this.name = 'RequestValidationError';
+        this.problems = problems;
     }
 }
 
@@ -154,6 +185,8 @@ export default {
     NoAccountsError,
     MaxRetriesError,
     ApiError,
+    TimeoutError,
+    RequestValidationError,
     isRateLimitError,
     isAuthError
 };

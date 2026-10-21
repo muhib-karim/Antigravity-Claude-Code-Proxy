@@ -97,7 +97,8 @@ export const DEFAULT_PORT = getEnvInt('PORT', 8080);
 // Bind to loopback by default so the proxy (and the accounts behind it) is not exposed to the network.
 // Set HOST=0.0.0.0 to listen on all interfaces.
 export const DEFAULT_HOST = getEnv('HOST', '127.0.0.1');
-export const REQUEST_BODY_LIMIT = getEnv('REQUEST_BODY_LIMIT', '50mb');
+// Matches the Anthropic Messages API request size limit; larger bodies get a 413 request_too_large
+export const REQUEST_BODY_LIMIT = getEnv('REQUEST_BODY_LIMIT', '32mb');
 
 // Token and timing configuration
 export const TOKEN_REFRESH_INTERVAL_MS = getEnvInt('TOKEN_REFRESH_INTERVAL', 5 * 60 * 1000); // 5 minutes
@@ -121,6 +122,20 @@ export const MAX_ACCOUNTS = getEnvInt('MAX_ACCOUNTS', 10); // Maximum number of 
 
 // Request timeout (new)
 export const REQUEST_TIMEOUT_MS = getEnvInt('REQUEST_TIMEOUT', 60000); // 60 seconds default
+
+// Upstream resilience: retries for 5xx/network/timeout errors (per account), exponential backoff with jitter
+export const UPSTREAM_RETRIES = getEnvInt('UPSTREAM_RETRIES', 2);
+export const RETRY_BASE_MS = getEnvInt('RETRY_BASE_MS', 500);
+export const RETRY_MAX_MS = getEnvInt('RETRY_MAX_MS', 8000);
+
+// Status returned when every account is out of quota: 400 (default, stops client retries) or 429 (+ retry-after)
+export const RATE_LIMIT_STATUS = getEnvInt('RATE_LIMIT_STATUS', 400) === 429 ? 429 : 400;
+
+// Requests per minute per client for the management/dashboard endpoints (the Messages API is not limited)
+export const MANAGEMENT_RATE_LIMIT = getEnvInt('MANAGEMENT_RATE_LIMIT', 300);
+
+// How long a graceful shutdown waits for in-flight requests before closing sockets
+export const SHUTDOWN_TIMEOUT_MS = getEnvInt('SHUTDOWN_TIMEOUT', 30000);
 
 // Antigravity auth port
 export const ANTIGRAVITY_AUTH_PORT = getEnvInt('ANTIGRAVITY_AUTH_PORT', 9092);
@@ -309,6 +324,12 @@ export default {
     RATE_LIMIT_PROGRESS_INTERVAL_MS,
     MAX_RATE_LIMIT_WAIT_MS,
     REQUEST_TIMEOUT_MS,
+    UPSTREAM_RETRIES,
+    RETRY_BASE_MS,
+    RETRY_MAX_MS,
+    RATE_LIMIT_STATUS,
+    MANAGEMENT_RATE_LIMIT,
+    SHUTDOWN_TIMEOUT_MS,
     MIN_SIGNATURE_LENGTH,
     GEMINI_MAX_OUTPUT_TOKENS,
     GEMINI_SKIP_SIGNATURE,
