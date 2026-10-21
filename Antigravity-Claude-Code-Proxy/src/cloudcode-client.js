@@ -59,6 +59,26 @@ function clearRequestTimeout(timeoutId) {
 }
 
 /**
+ * Combine the deadline signal with the client's disconnect signal (when given).
+ * @param {AbortSignal} deadline - Aborted by createTimeoutController
+ * @param {AbortSignal} [clientSignal] - Aborted when the client disconnects
+ * @returns {AbortSignal}
+ */
+function withClientSignal(deadline, clientSignal) {
+    return clientSignal ? AbortSignal.any([deadline, clientSignal]) : deadline;
+}
+
+/**
+ * Stop work for a client that has disconnected.
+ * @param {AbortSignal} [clientSignal]
+ */
+function throwIfClientGone(clientSignal) {
+    if (clientSignal?.aborted) {
+        throw Object.assign(new Error('Client closed the request'), { name: 'ClientAbortError' });
+    }
+}
+
+/**
  * Build the error for a non-2xx upstream response (5xx are retryable, Retry-After is kept).
  * @param {Response} response - Upstream response
  * @param {string} errorText - Response body
@@ -78,10 +98,14 @@ function upstreamError(response, errorText) {
  * wait with exponential backoff + jitter (or the upstream's Retry-After) and return true.
  * @param {Error} error - The failure
  * @param {number} retriesSoFar - Transient retries already spent on this request
+ * @param {AbortSignal} [clientSignal] - Aborted when the client has gone away
  * @returns {Promise<boolean>} Whether the caller should retry
  */
-async function backoffIfTransient(error, retriesSoFar) {
-    if (error.streamStarted || !isTransientError(error) || retriesSoFar >= UPSTREAM_RETRIES) return false;
+async function backoffIfTransient(error, retriesSoFar, clientSignal) {
+    if (error.streamStarted || clientSignal?.aborted) return false;
+    if (!isTransientError(error) || retriesSoFar >= UPSTREAM_RETRIES) return false;
+    // A deadline already cost REQUEST_TIMEOUT; retry it at most once (and only as the first retry)
+    if (error.name === 'TimeoutError' && retriesSoFar >= 1) return false;
     const delayMs = retryDelay(retriesSoFar, error.retryAfterMs ?? null, { baseMs: RETRY_BASE_MS, maxMs: RETRY_MAX_MS });
     const reason = error.name === 'TimeoutError' ? 'timeout' : (error.statusCode ? String(error.statusCode) : 'network');
     metrics.upstreamRetries.inc({ reason });
@@ -340,6 +364,7 @@ export async function sendMessage(anthropicRequest, accountManager) {
     let transientRetries = 0;
     let authRetried = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        throwIfClientGone(anthropicRequest.signal);
         // Use sticky account selection for cache continuity
         const { account: stickyAccount, waitMs } = accountManager.pickStickyAccount();
         let account = stickyAccount;
@@ -412,15 +437,17 @@ export async function sendMessage(anthropicRequest, accountManager) {
                         ? `${endpoint}/v1internal:streamGenerateContent?alt=sse`
                         : `${endpoint}/v1internal:generateContent`;
 
-                    // The deadline covers the whole exchange (headers and body), not just the first byte
+                    // The deadline covers the wait for response headers. Long replies (e.g. thinking
+                    // models) may take longer to read than REQUEST_TIMEOUT and must not be cut off.
                     const { controller, timeoutId } = createTimeoutController();
                     try {
                         const response = await fetch(url, {
                             method: 'POST',
                             headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json'),
                             body: JSON.stringify(payload),
-                            signal: controller.signal
+                            signal: withClientSignal(controller.signal, anthropicRequest.signal)
                         });
+                        clearRequestTimeout(timeoutId);
 
                         if (!response.ok) {
                             const errorText = await response.text();
@@ -484,6 +511,8 @@ export async function sendMessage(anthropicRequest, accountManager) {
             }
 
         } catch (error) {
+            // A stream that already reached the client can never be retried or moved to another account
+            if (error.streamStarted) throw error;
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} rate-limited, trying next...`);
@@ -500,8 +529,8 @@ export async function sendMessage(anthropicRequest, accountManager) {
                 attempt--;
                 continue;
             }
-            // 5xx / timeout / network: back off and retry the same account (does not use up an account attempt)
-            if (await backoffIfTransient(error, transientRetries)) {
+            // 5xx / timeout / network: back off and retry (UPSTREAM_RETRIES per request; does not use up an account attempt)
+            if (await backoffIfTransient(error, transientRetries, anthropicRequest.signal)) {
                 transientRetries++;
                 attempt--;
                 continue;
@@ -646,6 +675,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
     let transientRetries = 0;
     let authRetried = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        throwIfClientGone(anthropicRequest.signal);
         // Use sticky account selection for cache continuity
         const { account: stickyAccount, waitMs } = accountManager.pickStickyAccount();
         let account = stickyAccount;
@@ -719,7 +749,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                             method: 'POST',
                             headers: buildHeaders(token, model, 'text/event-stream'),
                             body: JSON.stringify(payload),
-                            signal: controller.signal
+                            signal: withClientSignal(controller.signal, anthropicRequest.signal)
                         });
                     } catch (fetchError) {
                         clearRequestTimeout(timeoutId);
@@ -794,6 +824,8 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
             }
 
         } catch (error) {
+            // A stream that already reached the client can never be retried or moved to another account
+            if (error.streamStarted) throw error;
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} rate-limited, trying next...`);
@@ -810,8 +842,8 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                 attempt--;
                 continue;
             }
-            // 5xx / timeout / network: back off and retry the same account (does not use up an account attempt)
-            if (await backoffIfTransient(error, transientRetries)) {
+            // 5xx / timeout / network: back off and retry (UPSTREAM_RETRIES per request; does not use up an account attempt)
+            if (await backoffIfTransient(error, transientRetries, anthropicRequest.signal)) {
                 transientRetries++;
                 attempt--;
                 continue;

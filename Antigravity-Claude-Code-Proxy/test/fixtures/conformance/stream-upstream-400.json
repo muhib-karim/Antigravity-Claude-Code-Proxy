@@ -1,7 +1,7 @@
 {
   "name": "stream-upstream-400",
   "profile": "default",
-  "description": "Errors after the SSE headers are flushed arrive as an Anthropic `error` event.",
+  "description": "Streaming request failing before the first event: real HTTP status and an Anthropic JSON error, not a 200 stream.",
   "request": {
     "body": {
       "model": "gemini-3-flash",
@@ -28,17 +28,17 @@
     }
   ],
   "expect": {
-    "status": 200,
+    "status": 400,
+    "headers": {
+      "content-type": "$contains:application/json"
+    },
     "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
-    "events": ["error"],
-    "eventData": [
-      {
-        "type": "error",
-        "error": {
-          "type": "invalid_request_error",
-          "message": "Bad schema in tools"
-        }
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "invalid_request_error",
+        "message": "Bad schema in tools"
       }
-    ]
+    }
   }
 }

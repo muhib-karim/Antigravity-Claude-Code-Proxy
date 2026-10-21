@@ -465,7 +465,8 @@ app.use(rateLimit({
 
 // While shutting down, answer new requests on kept-alive sockets with 503 so clients reconnect elsewhere
 app.use((req, res, next) => {
-    if (req.app.locals.isDraining?.()) {
+    // /livez stays 200 while draining so an orchestrator does not kill the process mid-drain
+    if (req.app.locals.isDraining?.() && req.path !== '/livez') {
         res.setHeader('connection', 'close');
         return res.status(503).json({ type: 'error', error: { type: 'api_error', message: 'Proxy is shutting down' } });
     }
@@ -1431,6 +1432,13 @@ app.post('/v1/messages', async (req, res) => {
             stop_sequences
         };
 
+        // Let the upstream client stop retrying once the caller has gone away
+        const clientGone = new AbortController();
+        res.on('close', () => {
+            if (!res.writableEnded) clientGone.abort();
+        });
+        request.signal = clientGone.signal;
+
         const requestStartTime = Date.now();
         console.log(`[API] Request for model: ${request.model}, stream: ${!!stream}, messages: ${messages.length}`);
 
@@ -1599,18 +1607,21 @@ app.post('/v1/messages', async (req, res) => {
                 sendError(res, err);
             }
         } else if (stream) {
-            // Handle streaming response
+            // Handle streaming response. Headers are held back until the upstream produces its
+            // first event: failures before that point (auth, rate limits, retries exhausted,
+            // timeouts) get their real HTTP status and retry-after, which clients act on.
+            const events = sendMessageStream(request, accountManager)[Symbol.asyncIterator]();
+            const first = await events.next(); // throws to the outer catch -> sendError with status
+
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
             res.setHeader('X-Accel-Buffering', 'no');
-
-            // Flush headers immediately to start the stream
             res.flushHeaders();
 
             try {
-                // Use the streaming generator with account manager
-                for await (const event of sendMessageStream(request, accountManager)) {
+                for (let item = first; !item.done; item = await events.next()) {
+                    const event = item.value;
                     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
                     // Flush after each event for real-time streaming
                     if (res.flush) res.flush();
@@ -1622,6 +1633,7 @@ app.post('/v1/messages', async (req, res) => {
                 res.end();
 
             } catch (streamError) {
+                // Mid-stream failure: the status is already 200, so report it as an SSE error event
                 console.error('[API] Stream error:', streamError);
                 sendError(res, streamError);
             }

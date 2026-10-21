@@ -1,0 +1,47 @@
+{
+  "name": "stream-429-retry-after",
+  "profile": "default",
+  "description": "Streaming request hitting an exhausted quota gets the quota status with a retry-after header before any SSE.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "90"
+      },
+      "json": {
+        "error": {
+          "code": 429,
+          "message": "quota",
+          "status": "RESOURCE_EXHAUSTED"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "headers": {
+      "retry-after": "$regex:^(8[0-9]|90)$"
+    },
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "invalid_request_error",
+        "message": "$contains:Quota will reset after"
+      }
+    }
+  }
+}

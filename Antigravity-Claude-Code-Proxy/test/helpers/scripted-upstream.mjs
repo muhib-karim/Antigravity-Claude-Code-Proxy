@@ -5,6 +5,7 @@
  * plain "ok" text reply is sent. Steps (all fields optional):
  *   { status, headers, json }              JSON reply (default status 200)
  *   { sse: [chunk, ...], chunkDelayMs }    text/event-stream reply, one `data:` line per chunk
+ *   { sse: [...], destroy: true }          send the chunks, then drop the connection mid-stream
  *   { hang: true }                         accept the request and never answer
  *   { delayMs }                            wait before answering
  */
@@ -50,6 +51,12 @@ export async function startScriptedUpstream() {
                 for (const chunk of step.sse) {
                     res.write(`data: ${JSON.stringify(chunk)}\n\n`);
                     if (step.chunkDelayMs) await new Promise(r => setTimeout(r, step.chunkDelayMs));
+                }
+                if (step.destroy) {
+                    // Give the proxy a moment to read the chunks, then cut the socket
+                    await new Promise(r => setTimeout(r, 50));
+                    res.socket?.destroy();
+                    return;
                 }
                 res.end();
                 return;
