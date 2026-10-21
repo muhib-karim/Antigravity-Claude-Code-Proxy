@@ -2,42 +2,81 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'upgrade/**']
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Antigravity-Claude-Code-Proxy
+
+env:
+  # Puppeteer's bundled Chrome is only needed for Perplexity browser login, not for tests
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
+
 jobs:
-  test:
+  quality:
+    name: Lint, format, types
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: ['20', '22']
-    defaults:
-      run:
-        working-directory: Antigravity-Claude-Code-Proxy
-    env:
-      # Puppeteer's bundled Chrome is only needed for Perplexity browser login, not for tests
-      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Antigravity-Claude-Code-Proxy/package-lock.json
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Prettier (new and maintained files)
+        run: npm run format:check
+      - name: TypeScript (JSDoc + @ts-check, no emit)
+        run: npm run typecheck
 
+  test:
+    name: Tests + coverage (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: Antigravity-Claude-Code-Proxy/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test (offline, mocked upstream)
-        run: npm test
+      - run: npm ci
+      - name: Offline suites (smoke, unit, conformance, integration) with c8 gate
+        run: npm run test:coverage
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "const t=require('./coverage/coverage-summary.json').total;console.log('| Metric | % |\n|---|---|');for(const k of ['lines','statements','functions','branches'])console.log('| '+k+' | '+t[k].pct+' |')" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload coverage report
+        if: matrix.node-version == '22'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: Antigravity-Claude-Code-Proxy/coverage/
+          retention-days: 14
 
   secrets:
+    name: gitleaks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,14 +90,12 @@ jobs:
           /tmp/gitleaks dir --no-banner --redact .
 
   audit:
+    name: npm audit (runtime deps)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Antigravity-Claude-Code-Proxy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: npm audit (runtime dependencies)
-        run: npm audit --package-lock-only --omit=dev --audit-level=high
+      - name: npm audit --omit=dev
+        run: npm audit --package-lock-only --omit=dev --audit-level=low
