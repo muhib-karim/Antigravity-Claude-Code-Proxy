@@ -893,7 +893,9 @@ app.get('/metrics', async (req, res) => {
     } catch {
         // Metrics stay available even when no account could be loaded
     }
-    res.type('text/plain; version=0.0.4; charset=utf-8').send(registry.render());
+    // res.end() keeps the exact Prometheus content type (res.send() would reorder its parameters)
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.end(registry.render());
 });
 
 /**

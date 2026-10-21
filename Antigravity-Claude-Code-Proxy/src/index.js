@@ -3,8 +3,13 @@
  * Entry point - starts the proxy server
  */
 
+import { installConsoleRedaction } from './utils/redact.js';
 import app from './server.js';
-import { DEFAULT_PORT, DEFAULT_HOST } from './constants.js';
+import { DEFAULT_PORT, DEFAULT_HOST, SHUTDOWN_TIMEOUT_MS } from './constants.js';
+import { createGracefulShutdown } from './http/shutdown.js';
+
+// Tokens, API keys and cookies must never reach stdout/stderr (see src/utils/redact.js)
+installConsoleRedaction();
 
 const PORT = process.env.PORT || DEFAULT_PORT;
 const HOST = DEFAULT_HOST;
@@ -12,65 +17,34 @@ const HOST = DEFAULT_HOST;
 // Track server instances for graceful shutdown
 let server = null;
 let server6 = null; // optional IPv6 loopback listener (see below)
-let isShuttingDown = false;
+
+// Stop accepting connections, let in-flight requests and SSE streams finish (up to
+// SHUTDOWN_TIMEOUT), then exit. While draining, /readyz and new requests answer 503.
+const shutdown = createGracefulShutdown({
+    getServers: () => [server, server6],
+    timeoutMs: SHUTDOWN_TIMEOUT_MS
+});
+app.locals.isDraining = shutdown.isDraining;
 
 /**
- * Graceful shutdown handler
- * Drains active connections and saves state before exit
- * @param {string} signal - The signal that triggered shutdown
+ * Bound how long a client may take to send its request, so idle or slow sockets
+ * cannot pin the process. Response streaming is not affected.
+ * @param {import('http').Server} srv
  */
-async function gracefulShutdown(signal) {
-    if (isShuttingDown) {
-        console.log('[Server] Shutdown already in progress...');
-        return;
-    }
-    isShuttingDown = true;
-
-    console.log(`\n[Server] ${signal} received. Starting graceful shutdown...`);
-
-    // Give in-flight requests time to complete
-    const shutdownTimeout = 30000; // 30 seconds
-    const forceExitTimeout = setTimeout(() => {
-        console.log('[Server] Force shutdown after timeout');
-        process.exit(1);
-    }, shutdownTimeout);
-
-    try {
-        // Stop accepting new connections and wait for in-flight requests on both listeners
-        const closing = [server, server6].filter(Boolean).map(srv => new Promise((resolve, reject) => {
-            srv.close((err) => {
-                if (err) {
-                    console.log('[Server] Error closing server:', err.message);
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
-        }));
-        await Promise.all(closing);
-        console.log('[Server] Server closed, no longer accepting connections');
-
-        // Allow time for any pending async operations
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        console.log('[Server] Graceful shutdown complete');
-        clearTimeout(forceExitTimeout);
-        process.exit(0);
-    } catch (error) {
-        console.error('[Server] Error during shutdown:', error.message);
-        clearTimeout(forceExitTimeout);
-        process.exit(1);
-    }
+function applyServerTimeouts(srv) {
+    srv.headersTimeout = 30000;
+    srv.requestTimeout = 120000;
+    srv.keepAliveTimeout = 65000;
 }
 
 // Handle termination signals
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown.run('SIGTERM'));
+process.on('SIGINT', () => shutdown.run('SIGINT'));
 
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
     console.error('[Server] Uncaught exception:', error);
-    gracefulShutdown('uncaughtException');
+    shutdown.run('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -82,6 +56,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // that resolve "localhost" to ::1 can still connect. Skipped if IPv6 is unavailable.
 if (HOST === '127.0.0.1') {
     server6 = app.listen(PORT, '::1');
+    applyServerTimeouts(server6);
     server6.on('error', (error) => {
         server6 = null;
         if (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT') return;
@@ -91,6 +66,7 @@ if (HOST === '127.0.0.1') {
 }
 
 server = app.listen(PORT, HOST, () => {
+    applyServerTimeouts(server);
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║           Antigravity Claude Proxy Server                    ║
@@ -103,6 +79,7 @@ server = app.listen(PORT, HOST, () => {
 ║    POST /v1/messages  - Anthropic Messages API               ║
 ║    GET  /v1/models    - List available models                ║
 ║    GET  /health       - Health check                         ║
+║    GET  /livez /readyz /metrics - Probes and Prometheus      ║
 ║    GET  /account-limits - Account status & quotas              ║
 ║    POST /refresh-token - Force token refresh                 ║
 ║                                                              ║
