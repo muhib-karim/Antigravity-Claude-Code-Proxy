@@ -1,0 +1,38 @@
+{
+  "name": "error-404",
+  "profile": "default",
+  "description": "Upstream 404 -> 404 not_found_error.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 404,
+      "json": {
+        "error": {
+          "code": 404,
+          "message": "Requested entity was not found.",
+          "status": "NOT_FOUND"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 404,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "error": {
+        "type": "not_found_error"
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "antigravity-claude-code-proxy",
-  "version": "4.1.0",
+  "version": "2.11.0",
   "description": "Multi-provider AI gateway for Claude Code - Use Gemini, GPT-5, Grok with status bar integration",
   "main": "src/index.js",
   "type": "module",
@@ -22,18 +22,23 @@
     "login:perplexity": "node scripts/login-perplexity.js",
     "login:perplexity:session": "node scripts/login-perplexity-session.js",
     "doctor": "node scripts/doctor.js",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/",
-    "format:check": "prettier --check src/",
-    "test": "node --test tests/smoke/format.test.mjs tests/smoke/content-converter.test.mjs tests/smoke/thinking-utils.test.mjs tests/smoke/cli.test.mjs tests/smoke/account-manager.test.mjs tests/smoke/server.test.mjs tests/smoke/browser-loader.test.mjs",
+    "lint": "eslint src/ test/",
+    "lint:fix": "eslint src/ test/ --fix",
+    "format": "prettier --write \"src/resilience/**/*.js\" \"src/http/**/*.js\" \"src/utils/redact.js\" \"test/**/*.{mjs,json}\" eslint.config.js tsconfig.json .c8rc.json",
+    "format:check": "prettier --check \"src/resilience/**/*.js\" \"src/http/**/*.js\" \"src/utils/redact.js\" \"test/**/*.{mjs,json}\" eslint.config.js tsconfig.json .c8rc.json",
+    "test": "node --test --test-concurrency=1 tests/smoke/*.test.mjs test/unit/*.test.mjs test/conformance/*.test.mjs test/integration/*.test.mjs",
     "test:live": "node tests/run-all.cjs",
     "test:signatures": "node tests/test-thinking-signatures.cjs",
     "test:multiturn": "node tests/test-multiturn-thinking-tools.cjs",
     "test:streaming": "node tests/test-multiturn-thinking-tools-streaming.cjs",
     "test:interleaved": "node tests/test-interleaved-thinking.cjs",
     "test:images": "node tests/test-images.cjs",
-    "test:caching": "node tests/test-caching-streaming.cjs"
+    "test:caching": "node tests/test-caching-streaming.cjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "node --test --test-concurrency=1 test/unit/*.test.mjs",
+    "test:conformance": "node --test --test-concurrency=1 test/conformance/*.test.mjs",
+    "test:coverage": "c8 npm test",
+    "test:integration": "node --test --test-concurrency=1 test/integration/*.test.mjs"
   },
   "keywords": [
     "claude",
@@ -53,19 +58,23 @@
     "url": "https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.5.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "c8": "^10.1.3",
     "eslint": "^9.17.0",
     "globals": "^14.0.0",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "typescript": "~5.6.3"
   },
   "peerDependencies": {
     "puppeteer": "^24.34.0",

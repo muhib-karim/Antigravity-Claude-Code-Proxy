@@ -1,0 +1,69 @@
+{
+  "name": "stream-mid-stream-failure",
+  "profile": "default",
+  "description": "If the upstream drops after events were sent, the client gets an SSE error event and the stream is not replayed.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "partial "
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 7,
+              "candidatesTokenCount": 1
+            }
+          }
+        }
+      ],
+      "destroy": true
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "events": ["message_start", "content_block_start", "content_block_delta", "error"],
+    "eventData": [
+      {
+        "type": "message_start"
+      },
+      {
+        "index": 0
+      },
+      {
+        "delta": {
+          "text": "partial "
+        }
+      },
+      {
+        "type": "error",
+        "error": {
+          "type": "$string"
+        }
+      }
+    ]
+  }
+}

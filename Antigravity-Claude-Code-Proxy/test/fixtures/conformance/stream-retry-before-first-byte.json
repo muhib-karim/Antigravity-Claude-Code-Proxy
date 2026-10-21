@@ -1,0 +1,67 @@
+{
+  "name": "stream-retry-before-first-byte",
+  "profile": "default",
+  "description": "A 500 before any event is sent is retried with backoff; the client sees one clean stream.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "status": 500,
+      "json": {
+        "error": {
+          "code": 500,
+          "message": "transient",
+          "status": "INTERNAL"
+        }
+      }
+    },
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "recovered"
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 7,
+              "candidatesTokenCount": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse", "/v1internal:streamGenerateContent?alt=sse"],
+    "events": [
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop"
+    ]
+  }
+}

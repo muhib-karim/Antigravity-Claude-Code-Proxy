@@ -1,0 +1,22 @@
+{
+  "name": "validation-wrong-content-type",
+  "profile": "default",
+  "description": "A body sent with a non-JSON content type -> 400 naming the content type.",
+  "request": {
+    "rawBody": "hello",
+    "headers": {
+      "content-type": "text/plain"
+    }
+  },
+  "upstream": [],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": [],
+    "body": {
+      "error": {
+        "type": "invalid_request_error",
+        "message": "content-type: must be application/json"
+      }
+    }
+  }
+}

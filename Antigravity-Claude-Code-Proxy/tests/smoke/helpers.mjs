@@ -130,7 +130,7 @@ export async function startMockUpstream(replyText = 'Hello from the mock upstrea
  * @param {Object<string, string>} [options.stateFiles] - Files pre-seeded into the state dir (name -> content)
  * @param {Object<string, string>} [options.homeFiles] - Files pre-seeded into the temp HOME (relative path -> content)
  * @param {Object<string, string>} [options.env] - Extra environment variables for the proxy process
- * @returns {Promise<{baseUrl: string, home: string, stateDir: string, logs: () => string, stop: () => Promise<void>}>}
+ * @returns {Promise<{baseUrl: string, home: string, stateDir: string, child: import('node:child_process').ChildProcess, exited: Promise<number|null>, logs: () => string, stop: () => Promise<void>}>}
  */
 export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, homeFiles = {}, env: extraEnv = {} } = {}) {
     const tmp = mkdtempSync(join(tmpdir(), 'ag-proxy-test-'));
@@ -176,6 +176,7 @@ export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, 
         stdio: ['ignore', 'pipe', 'pipe']
     });
 
+    const exited = new Promise(resolve => child.once('exit', code => resolve(code)));
     let output = '';
     child.stdout.on('data', d => { output += d; });
     child.stderr.on('data', d => { output += d; });
@@ -210,5 +211,5 @@ export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, 
         throw new Error(`Proxy did not become ready on ${baseUrl}.\n--- proxy output ---\n${output}`);
     }
 
-    return { baseUrl, home, stateDir, logs: () => output, stop };
+    return { baseUrl, home, stateDir, child, exited, logs: () => output, stop };
 }

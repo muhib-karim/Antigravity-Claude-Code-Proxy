@@ -114,6 +114,15 @@ export function convertAnthropicToGoogle(anthropicRequest) {
         console.log('[RequestConverter] Stripped thinking blocks from history to prevent signature corruption');
     }
 
+    // Map tool_use ids to tool names so tool_result blocks become correctly named functionResponses
+    const toolNames = new Map();
+    for (const msg of processedMessages) {
+        if (!Array.isArray(msg.content)) continue;
+        for (const block of msg.content) {
+            if (block.type === 'tool_use' && block.id && block.name) toolNames.set(block.id, block.name);
+        }
+    }
+
     // Convert messages to contents, then filter unsigned thinking blocks
     for (let i = 0; i < processedMessages.length; i++) {
         const msg = processedMessages[i];
@@ -129,7 +138,7 @@ export function convertAnthropicToGoogle(anthropicRequest) {
             msgContent = reorderAssistantContent(msgContent);
         }
 
-        const parts = convertContentToParts(msgContent, isClaudeModel, isGeminiModel);
+        const parts = convertContentToParts(msgContent, isClaudeModel, isGeminiModel, toolNames);
 
         // SAFETY: Google API requires at least one part per content message
         // This happens when all thinking blocks are filtered out (unsigned)

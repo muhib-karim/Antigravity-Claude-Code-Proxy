@@ -1,0 +1,23 @@
+{
+  "name": "validation-empty-messages",
+  "profile": "default",
+  "description": "An empty messages array is rejected.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 16,
+      "messages": []
+    }
+  },
+  "upstream": [],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": [],
+    "body": {
+      "error": {
+        "type": "invalid_request_error",
+        "message": "messages: must not be empty"
+      }
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "stream-503-exhausted",
+  "profile": "default",
+  "description": "Streaming request with a persistently overloaded upstream: 529 overloaded_error after retries.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "status": 503,
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "unavailable",
+          "status": "UNAVAILABLE"
+        }
+      }
+    },
+    {
+      "status": 503,
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "unavailable",
+          "status": "UNAVAILABLE"
+        }
+      }
+    },
+    {
+      "status": 503,
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "unavailable",
+          "status": "UNAVAILABLE"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 529,
+    "upstreamCalls": [
+      "/v1internal:streamGenerateContent?alt=sse",
+      "/v1internal:streamGenerateContent?alt=sse",
+      "/v1internal:streamGenerateContent?alt=sse"
+    ],
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "overloaded_error"
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "name": "error-429-retry-after",
+  "profile": "default",
+  "description": "Upstream 429 with Retry-After on the only account -> quota error (400 by default) carrying a retry-after header.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 429,
+      "headers": {
+        "retry-after": "120"
+      },
+      "json": {
+        "error": {
+          "code": 429,
+          "message": "Resource has been exhausted (e.g. check quota).",
+          "status": "RESOURCE_EXHAUSTED"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "headers": {
+      "retry-after": "$regex:^1[12][0-9]$"
+    },
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "invalid_request_error",
+        "message": "$contains:Quota will reset after"
+      }
+    }
+  }
+}

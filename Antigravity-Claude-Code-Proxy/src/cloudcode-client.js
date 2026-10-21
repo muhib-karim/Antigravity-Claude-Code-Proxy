@@ -19,6 +19,9 @@ import {
     MAX_RATE_LIMIT_WAIT_MS,
     MIN_SIGNATURE_LENGTH,
     REQUEST_TIMEOUT_MS,
+    UPSTREAM_RETRIES,
+    RETRY_BASE_MS,
+    RETRY_MAX_MS,
     getModelFamily,
     isThinkingModel
 } from './constants.js';
@@ -28,7 +31,9 @@ import {
 } from './format/index.js';
 import { cacheSignature } from './format/signature-cache.js';
 import { formatDuration, sleep, waitWithProgress } from './utils/helpers.js';
-import { isRateLimitError, isAuthError } from './errors.js';
+import { isRateLimitError, isAuthError, ApiError, TimeoutError } from './errors.js';
+import { parseRetryAfter, retryDelay, isTransientError } from './resilience/backoff.js';
+import { metrics } from './http/metrics.js';
 
 /**
  * Create an AbortController with timeout
@@ -38,7 +43,7 @@ import { isRateLimitError, isAuthError } from './errors.js';
 function createTimeoutController(timeoutMs = REQUEST_TIMEOUT_MS) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-        controller.abort(new Error(`Request timeout after ${timeoutMs}ms`));
+        controller.abort(new TimeoutError(timeoutMs));
     }, timeoutMs);
     return { controller, timeoutId };
 }
@@ -51,6 +56,62 @@ function clearRequestTimeout(timeoutId) {
     if (timeoutId) {
         clearTimeout(timeoutId);
     }
+}
+
+/**
+ * Combine the deadline signal with the client's disconnect signal (when given).
+ * @param {AbortSignal} deadline - Aborted by createTimeoutController
+ * @param {AbortSignal} [clientSignal] - Aborted when the client disconnects
+ * @returns {AbortSignal}
+ */
+function withClientSignal(deadline, clientSignal) {
+    return clientSignal ? AbortSignal.any([deadline, clientSignal]) : deadline;
+}
+
+/**
+ * Stop work for a client that has disconnected.
+ * @param {AbortSignal} [clientSignal]
+ */
+function throwIfClientGone(clientSignal) {
+    if (clientSignal?.aborted) {
+        throw Object.assign(new Error('Client closed the request'), { name: 'ClientAbortError' });
+    }
+}
+
+/**
+ * Build the error for a non-2xx upstream response (5xx are retryable, Retry-After is kept).
+ * @param {Response} response - Upstream response
+ * @param {string} errorText - Response body
+ * @returns {ApiError}
+ */
+function upstreamError(response, errorText) {
+    return new ApiError(
+        `API error ${response.status}: ${errorText}`,
+        response.status,
+        'api_error',
+        parseRetryAfter(response.headers.get('retry-after'))
+    );
+}
+
+/**
+ * If a failed account attempt is transient (5xx, timeout, network) and retries remain,
+ * wait with exponential backoff + jitter (or the upstream's Retry-After) and return true.
+ * @param {Error} error - The failure
+ * @param {number} retriesSoFar - Transient retries already spent on this request
+ * @param {AbortSignal} [clientSignal] - Aborted when the client has gone away
+ * @returns {Promise<boolean>} Whether the caller should retry
+ */
+async function backoffIfTransient(error, retriesSoFar, clientSignal) {
+    if (error.streamStarted || clientSignal?.aborted) return false;
+    if (!isTransientError(error) || retriesSoFar >= UPSTREAM_RETRIES) return false;
+    // A deadline already cost REQUEST_TIMEOUT; retry it at most once (and only as the first retry)
+    if (error.name === 'TimeoutError' && retriesSoFar >= 1) return false;
+    const delayMs = retryDelay(retriesSoFar, error.retryAfterMs ?? null, { baseMs: RETRY_BASE_MS, maxMs: RETRY_MAX_MS });
+    const reason = error.name === 'TimeoutError' ? 'timeout' : (error.statusCode ? String(error.statusCode) : 'network');
+    metrics.upstreamRetries.inc({ reason });
+    console.log(`[CloudCode] Transient upstream error (${reason}). Retry ${retriesSoFar + 1}/${UPSTREAM_RETRIES} in ${delayMs}ms`);
+    await sleep(delayMs);
+    return true;
 }
 
 /**
@@ -300,7 +361,10 @@ export async function sendMessage(anthropicRequest, accountManager) {
         throw new Error('No accounts available. Add a Google account with "npm run accounts:add" or sign in to Antigravity.');
     }
 
+    let transientRetries = 0;
+    let authRetried = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        throwIfClientGone(anthropicRequest.signal);
         // Use sticky account selection for cache continuity
         const { account: stickyAccount, waitMs } = accountManager.pickStickyAccount();
         let account = stickyAccount;
@@ -373,57 +437,58 @@ export async function sendMessage(anthropicRequest, accountManager) {
                         ? `${endpoint}/v1internal:streamGenerateContent?alt=sse`
                         : `${endpoint}/v1internal:generateContent`;
 
+                    // The deadline covers the wait for response headers. Long replies (e.g. thinking
+                    // models) may take longer to read than REQUEST_TIMEOUT and must not be cut off.
                     const { controller, timeoutId } = createTimeoutController();
-                    let response;
                     try {
-                        response = await fetch(url, {
+                        const response = await fetch(url, {
                             method: 'POST',
                             headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json'),
                             body: JSON.stringify(payload),
-                            signal: controller.signal
+                            signal: withClientSignal(controller.signal, anthropicRequest.signal)
                         });
+                        clearRequestTimeout(timeoutId);
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.log(`[CloudCode] Error at ${endpoint}: ${response.status} - ${errorText}`);
+
+                            if (response.status === 401) {
+                                // Auth error - clear caches and retry with fresh token
+                                console.log('[CloudCode] Auth error, refreshing token...');
+                                accountManager.clearTokenCache(account.email);
+                                accountManager.clearProjectCache(account.email);
+                                lastError = upstreamError(response, errorText);
+                                continue;
+                            }
+
+                            if (response.status === 429) {
+                                // Rate limited on this endpoint - try next endpoint first (DAILY → PROD)
+                                console.log(`[CloudCode] Rate limited at ${endpoint}, trying next endpoint...`);
+                                const resetMs = parseResetTime(response, errorText);
+                                // Keep minimum reset time across all 429 responses
+                                if (!lastError?.is429 || (resetMs && (!lastError.resetMs || resetMs < lastError.resetMs))) {
+                                    lastError = { is429: true, response, errorText, resetMs };
+                                }
+                                continue;
+                            }
+
+                            lastError = upstreamError(response, errorText);
+                            continue;
+                        }
+
+                        // For thinking models, parse SSE and accumulate all parts
+                        if (isThinking) {
+                            return await parseThinkingSSEResponse(response, anthropicRequest.model);
+                        }
+
+                        // Non-thinking models use regular JSON
+                        const data = await response.json();
+                        console.log('[CloudCode] Response received');
+                        return convertGoogleToAnthropic(data, anthropicRequest.model);
                     } finally {
                         clearRequestTimeout(timeoutId);
                     }
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.log(`[CloudCode] Error at ${endpoint}: ${response.status} - ${errorText}`);
-
-                        if (response.status === 401) {
-                            // Auth error - clear caches and retry with fresh token
-                            console.log('[CloudCode] Auth error, refreshing token...');
-                            accountManager.clearTokenCache(account.email);
-                            accountManager.clearProjectCache(account.email);
-                            continue;
-                        }
-
-                        if (response.status === 429) {
-                            // Rate limited on this endpoint - try next endpoint first (DAILY → PROD)
-                            console.log(`[CloudCode] Rate limited at ${endpoint}, trying next endpoint...`);
-                            const resetMs = parseResetTime(response, errorText);
-                            // Keep minimum reset time across all 429 responses
-                            if (!lastError?.is429 || (resetMs && (!lastError.resetMs || resetMs < lastError.resetMs))) {
-                                lastError = { is429: true, response, errorText, resetMs };
-                            }
-                            continue;
-                        }
-
-                        if (response.status >= 400) {
-                            lastError = new Error(`API error ${response.status}: ${errorText}`);
-                            continue;
-                        }
-                    }
-
-                    // For thinking models, parse SSE and accumulate all parts
-                    if (isThinking) {
-                        return await parseThinkingSSEResponse(response, anthropicRequest.model);
-                    }
-
-                    // Non-thinking models use regular JSON
-                    const data = await response.json();
-                    console.log('[CloudCode] Response received');
-                    return convertGoogleToAnthropic(data, anthropicRequest.model);
 
                 } catch (endpointError) {
                     if (isRateLimitError(endpointError)) {
@@ -446,6 +511,8 @@ export async function sendMessage(anthropicRequest, accountManager) {
             }
 
         } catch (error) {
+            // A stream that already reached the client can never be retried or moved to another account
+            if (error.streamStarted) throw error;
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} rate-limited, trying next...`);
@@ -456,7 +523,19 @@ export async function sendMessage(anthropicRequest, accountManager) {
                 console.log(`[CloudCode] Account ${account.email} has invalid credentials, trying next...`);
                 continue;
             }
-            // Non-rate-limit error: throw immediately
+            // Upstream 401: token caches were cleared, so retry once with a freshly fetched token
+            if (error.statusCode === 401 && !authRetried) {
+                authRetried = true;
+                attempt--;
+                continue;
+            }
+            // 5xx / timeout / network: back off and retry (UPSTREAM_RETRIES per request; does not use up an account attempt)
+            if (await backoffIfTransient(error, transientRetries, anthropicRequest.signal)) {
+                transientRetries++;
+                attempt--;
+                continue;
+            }
+            // Non-retryable error: throw immediately
             throw error;
         }
     }
@@ -593,7 +672,10 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
         throw new Error('No accounts available. Add a Google account with "npm run accounts:add" or sign in to Antigravity.');
     }
 
+    let transientRetries = 0;
+    let authRetried = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        throwIfClientGone(anthropicRequest.signal);
         // Use sticky account selection for cache continuity
         const { account: stickyAccount, waitMs } = accountManager.pickStickyAccount();
         let account = stickyAccount;
@@ -667,7 +749,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                             method: 'POST',
                             headers: buildHeaders(token, model, 'text/event-stream'),
                             body: JSON.stringify(payload),
-                            signal: controller.signal
+                            signal: withClientSignal(controller.signal, anthropicRequest.signal)
                         });
                     } catch (fetchError) {
                         clearRequestTimeout(timeoutId);
@@ -677,12 +759,14 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
 
                     if (!response.ok) {
                         const errorText = await response.text();
+                        clearRequestTimeout(timeoutId);
                         console.log(`[CloudCode] Stream error at ${endpoint}: ${response.status} - ${errorText}`);
 
                         if (response.status === 401) {
                             // Auth error - clear caches and retry
                             accountManager.clearTokenCache(account.email);
                             accountManager.clearProjectCache(account.email);
+                            lastError = upstreamError(response, errorText);
                             continue;
                         }
 
@@ -697,13 +781,21 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                             continue;
                         }
 
-                        lastError = new Error(`API error ${response.status}: ${errorText}`);
+                        lastError = upstreamError(response, errorText);
                         continue;
                     }
 
-                    // Stream the response - yield events as they arrive
+                    // Stream the response - yield events as they arrive. Once the client has
+                    // received an event, a failure can no longer be retried or sent elsewhere.
+                    let streamStarted = false;
                     try {
-                        yield* streamSSEResponse(response, anthropicRequest.model);
+                        for await (const event of streamSSEResponse(response, anthropicRequest.model)) {
+                            streamStarted = true;
+                            yield event;
+                        }
+                    } catch (streamError) {
+                        if (streamStarted) streamError.streamStarted = true;
+                        throw streamError;
                     } finally {
                         clearRequestTimeout(timeoutId);
                     }
@@ -712,8 +804,8 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                     return;
 
                 } catch (endpointError) {
-                    if (isRateLimitError(endpointError)) {
-                        throw endpointError; // Re-throw to trigger account switch
+                    if (isRateLimitError(endpointError) || endpointError.streamStarted) {
+                        throw endpointError; // Re-throw to trigger account switch (or abort a started stream)
                     }
                     console.log(`[CloudCode] Stream error at ${endpoint}:`, endpointError.message);
                     lastError = endpointError;
@@ -732,6 +824,8 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
             }
 
         } catch (error) {
+            // A stream that already reached the client can never be retried or moved to another account
+            if (error.streamStarted) throw error;
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} rate-limited, trying next...`);
@@ -742,7 +836,19 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                 console.log(`[CloudCode] Account ${account.email} has invalid credentials, trying next...`);
                 continue;
             }
-            // Non-rate-limit error: throw immediately
+            // Upstream 401: token caches were cleared, so retry once with a freshly fetched token
+            if (error.statusCode === 401 && !authRetried) {
+                authRetried = true;
+                attempt--;
+                continue;
+            }
+            // 5xx / timeout / network: back off and retry (UPSTREAM_RETRIES per request; does not use up an account attempt)
+            if (await backoffIfTransient(error, transientRetries, anthropicRequest.signal)) {
+                transientRetries++;
+                attempt--;
+                continue;
+            }
+            // Non-retryable error: throw immediately
             throw error;
         }
     }

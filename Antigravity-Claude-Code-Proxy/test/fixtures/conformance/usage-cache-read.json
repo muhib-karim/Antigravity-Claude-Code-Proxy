@@ -1,0 +1,55 @@
+{
+  "name": "usage-cache-read",
+  "profile": "default",
+  "description": "Cached prompt tokens are reported as cache_read_input_tokens and excluded from input_tokens.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "ok"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 100,
+            "candidatesTokenCount": 9,
+            "cachedContentTokenCount": 60
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "usage": {
+        "input_tokens": 40,
+        "output_tokens": 9,
+        "cache_read_input_tokens": 60,
+        "cache_creation_input_tokens": 0
+      }
+    }
+  }
+}

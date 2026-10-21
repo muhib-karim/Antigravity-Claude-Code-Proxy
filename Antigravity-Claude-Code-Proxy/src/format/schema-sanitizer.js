@@ -22,8 +22,13 @@
 function appendDescriptionHint(schema, hint) {
     if (!schema || typeof schema !== 'object') return schema;
     const result = { ...schema };
-    result.description = result.description
-        ? `${result.description} (${hint})`
+    const existing = result.description;
+    // Idempotent: the pipeline visits nested schemas more than once, so never add the same hint twice
+    if (existing && (existing === hint || existing.startsWith(`${hint} (`) || existing.includes(`(${hint})`))) {
+        return result;
+    }
+    result.description = existing
+        ? `${existing} (${hint})`
         : hint;
     return result;
 }
@@ -547,7 +552,11 @@ export function sanitizeSchema(schema) {
 
     // Ensure we have at least a type
     if (!sanitized.type) {
-        sanitized.type = 'object';
+        // An enum/const without a type takes the type of its values; anything else is an object
+        const sample = Array.isArray(sanitized.enum) ? sanitized.enum[0] : undefined;
+        sanitized.type = typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean'
+            ? typeof sample
+            : 'object';
     }
 
     // If object type with no properties, add placeholder
@@ -577,6 +586,14 @@ export function cleanSchemaForGemini(schema) {
 
     // Phase 1: Convert $refs to hints
     let result = convertRefsToHints(schema);
+
+    // Gemini has no `const`: a string constant becomes a one-value enum, anything else a hint
+    if (Object.prototype.hasOwnProperty.call(result, 'const')) {
+        const { const: value, ...rest } = result;
+        result = typeof value === 'string'
+            ? { type: 'string', ...rest, enum: rest.enum || [value] }
+            : appendDescriptionHint(rest, `const: ${JSON.stringify(value)}`);
+    }
 
     // Phase 1b: Add enum hints (preserves enum info in description)
     result = addEnumHints(result);

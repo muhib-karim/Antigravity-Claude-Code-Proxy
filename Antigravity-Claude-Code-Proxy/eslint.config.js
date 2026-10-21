@@ -21,6 +21,10 @@ export default [
         }
     },
     {
+        files: ['test/**/*.mjs'],
+        languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: globals.node }
+    },
+    {
         files: ['src/public/**/*.js'],
         languageOptions: { globals: globals.browser }
     }

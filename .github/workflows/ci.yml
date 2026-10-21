@@ -2,42 +2,81 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'upgrade/**']
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Antigravity-Claude-Code-Proxy
+
+env:
+  # Puppeteer's bundled Chrome is only needed for Perplexity browser login, not for tests
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
+
 jobs:
-  test:
+  quality:
+    name: Lint, format, types
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: ['20', '22']
-    defaults:
-      run:
-        working-directory: Antigravity-Claude-Code-Proxy
-    env:
-      # Puppeteer's bundled Chrome is only needed for Perplexity browser login, not for tests
-      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Antigravity-Claude-Code-Proxy/package-lock.json
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Prettier (new and maintained files)
+        run: npm run format:check
+      - name: TypeScript (JSDoc + @ts-check, no emit)
+        run: npm run typecheck
 
+  test:
+    name: Tests + coverage (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: Antigravity-Claude-Code-Proxy/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test (offline, mocked upstream)
-        run: npm test
+      - run: npm ci
+      - name: Offline suites (smoke, unit, conformance, integration) with c8 gate
+        run: npm run test:coverage
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "const t=require('./coverage/coverage-summary.json').total;console.log('| Metric | % |\n|---|---|');for(const k of ['lines','statements','functions','branches'])console.log('| '+k+' | '+t[k].pct+' |')" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload coverage report
+        if: matrix.node-version == '22'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: Antigravity-Claude-Code-Proxy/coverage/
+          retention-days: 14
 
   secrets:
+    name: gitleaks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,19 +85,74 @@ jobs:
         env:
           GITLEAKS_VERSION: 8.21.2
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /tmp gitleaks
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd /tmp
+          curl -sSfLO "$base/$tarball"
+          curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" -o checksums.txt
+          grep " ${tarball}\$" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          cd "$GITHUB_WORKSPACE"
           /tmp/gitleaks git --no-banner --redact .
           /tmp/gitleaks dir --no-banner --redact .
 
   audit:
+    name: npm audit (runtime deps)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Antigravity-Claude-Code-Proxy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: npm audit (runtime dependencies)
-        run: npm audit --package-lock-only --omit=dev --audit-level=high
+      - name: npm audit --omit=dev
+        run: npm audit --package-lock-only --omit=dev --audit-level=low
+
+  docker:
+    name: Docker image (build + smoke run)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (multi-stage, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: Antigravity-Claude-Code-Proxy
+          load: true
+          push: false
+          tags: antigravity-claude-code-proxy:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Image runs as a non-root user
+        run: |
+          user=$(docker image inspect antigravity-claude-code-proxy:ci --format '{{.Config.User}}')
+          echo "image user: $user"
+          test "$user" = "node"
+          test "$(docker run --rm antigravity-claude-code-proxy:ci id -u)" != "0"
+      - name: Smoke run (healthcheck, probes, validation, graceful stop)
+        run: |
+          docker run -d --name proxy --health-interval=2s --health-start-period=2s \
+            -p 127.0.0.1:8080:8080 antigravity-claude-code-proxy:ci
+          for i in $(seq 1 30); do
+            status=$(docker inspect proxy --format '{{.State.Health.Status}}')
+            [ "$status" = "healthy" ] && break
+            sleep 1
+          done
+          docker inspect proxy --format 'health: {{.State.Health.Status}}'
+          test "$status" = "healthy"
+          curl -fsS http://127.0.0.1:8080/livez
+          curl -fsS http://127.0.0.1:8080/metrics | grep -q '^proxy_http_requests_total'
+          # No accounts are configured in CI: readiness must say so
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/readyz)" = "503"
+          code=$(curl -s -o body.json -w '%{http_code}' -H 'content-type: application/json' \
+            -d '{"model":"gemini-3-flash","messages":[]}' http://127.0.0.1:8080/v1/messages)
+          cat body.json; echo
+          test "$code" = "400"
+          grep -q '"invalid_request_error"' body.json
+          docker stop --time 20 proxy
+          exit_code=$(docker inspect proxy --format '{{.State.ExitCode}}')
+          docker logs proxy | tail -5
+          echo "exit code after SIGTERM: $exit_code"
+          test "$exit_code" = "0"

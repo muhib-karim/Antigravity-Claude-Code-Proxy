@@ -1,129 +1,106 @@
 name: Publish Extension
 
+# Status bar extension releases (separate from proxy releases, which use v* tags; see release.yml).
+# Trigger with an ext-vX.Y.Z tag or manually. The extension source lives in its own repository.
+# Open VSX publishing is skipped (with a notice, not a failure) when OVSX_PAT is not configured,
+# when the extension repo's version differs from the requested one, or when that version is
+# already on Open VSX. The GitHub release it creates is never marked Latest.
+
 on:
   push:
     tags:
-      - 'v*'  # Triggers on version tags like v2.9.0, v3.0.0, etc.
+      - 'ext-v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 2.9.1)'
+        description: 'Extension version to release (e.g. 4.3.1)'
         required: true
+
+permissions:
+  contents: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+    env:
+      HAS_OVSX_PAT: ${{ secrets.OVSX_PAT != '' }}
+      INPUT_VERSION: ${{ github.event.inputs.version }}
+
     steps:
       - name: Checkout main repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Clone extension repo
         run: |
           rm -rf claude-proxy-ext-src
-          git clone https://github.com/muhib-karim/Claude-Proxy-Extension.git claude-proxy-ext-src
-          echo "Cloned extension repo"
-          ls -la claude-proxy-ext-src/
+          git clone --depth 1 https://github.com/muhib-karim/Claude-Proxy-Extension.git claude-proxy-ext-src
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Get version from tag
-        id: get_version
+      - name: Resolve versions
+        id: v
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
-            VERSION=${GITHUB_REF#refs/tags/v}
+            VERSION="${GITHUB_REF_NAME#ext-v}"
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
-          echo "Releasing version: $VERSION"
-
-      - name: Get extension version
-        id: ext_version
-        run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$VERSION' is not an X.Y.Z version"; exit 1
+          fi
           EXT_VERSION=$(node -p "require('./claude-proxy-ext-src/package.json').version")
-          echo "EXT_VERSION=$EXT_VERSION" >> $GITHUB_OUTPUT
-          echo "Extension version: $EXT_VERSION"
-
-      - name: Update README version badges
-        run: |
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          EXT_VERSION=${{ steps.ext_version.outputs.EXT_VERSION }}
-          # Update Proxy version badge
-          sed -i "s/Proxy-v[0-9]*\.[0-9]*\.[0-9]*/Proxy-v$VERSION/g" README.md
-          # Update Extension version badge
-          sed -i "s/Extension-v[0-9]*\.[0-9]*\.[0-9]*/Extension-v$EXT_VERSION/g" README.md
-          echo "Updated badges to Proxy v$VERSION, Extension v$EXT_VERSION"
-
-      - name: Commit badge updates
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add README.md
-          git diff --staged --quiet || git commit -m "chore: auto-update version badges to ${{ steps.get_version.outputs.TAG }}"
-          git push origin HEAD:main || echo "No changes to push"
-
-      - name: Extract changelog for this version
-        id: changelog
-        run: |
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          # Extract changelog section for this version
-          CHANGELOG=$(awk "/## \[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '$ d' | tail -n +2)
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="Release $VERSION - Extension v${{ steps.ext_version.outputs.EXT_VERSION }}"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "TAG=ext-v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "EXT_VERSION=$EXT_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$EXT_VERSION" = "$VERSION" ]; then
+            echo "MATCH=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Extension repo is at $EXT_VERSION, not $VERSION; nothing will be published"
+            echo "MATCH=false" >> "$GITHUB_OUTPUT"
           fi
-          # Save to file for multi-line output
-          echo "$CHANGELOG" > release_notes.md
-          echo "Extracted changelog for v$VERSION"
-
-      - name: Install extension dependencies
-        working-directory: claude-proxy-ext-src
-        run: npm install
 
       - name: Package extension
+        if: steps.v.outputs.MATCH == 'true'
         working-directory: claude-proxy-ext-src
-        run: npx @vscode/vsce package
+        run: |
+          npm install
+          npx @vscode/vsce package
 
       - name: Check whether this extension version is already on Open VSX
+        if: steps.v.outputs.MATCH == 'true'
         id: ovsx_check
+        env:
+          EXT_VERSION: ${{ steps.v.outputs.EXT_VERSION }}
         run: |
-          EXT_VERSION=${{ steps.ext_version.outputs.EXT_VERSION }}
           if curl -sf "https://open-vsx.org/api/ai-dev-2024/claude-proxy-status/$EXT_VERSION" > /dev/null; then
             echo "Extension v$EXT_VERSION is already published; skipping Open VSX upload"
-            echo "PUBLISHED=true" >> $GITHUB_OUTPUT
+            echo "PUBLISHED=true" >> "$GITHUB_OUTPUT"
           else
-            echo "PUBLISHED=false" >> $GITHUB_OUTPUT
+            echo "PUBLISHED=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish to Open VSX
-        if: steps.ovsx_check.outputs.PUBLISHED != 'true'
+        if: steps.v.outputs.MATCH == 'true' && steps.ovsx_check.outputs.PUBLISHED != 'true' && env.HAS_OVSX_PAT == 'true'
         working-directory: claude-proxy-ext-src
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx ovsx publish *.vsix -p $OVSX_PAT
+        run: npx ovsx publish *.vsix -p "$OVSX_PAT"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Note skipped Open VSX upload
+        if: steps.v.outputs.MATCH == 'true' && steps.ovsx_check.outputs.PUBLISHED != 'true' && env.HAS_OVSX_PAT != 'true'
+        run: echo "::notice::OVSX_PAT is not configured; the extension was packaged but not published to Open VSX"
+
+      - name: Create GitHub release for the extension (not Latest)
+        if: steps.v.outputs.MATCH == 'true' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.v.outputs.TAG }}
+          name: Status bar extension v${{ steps.v.outputs.VERSION }}
+          body: Status bar extension v${{ steps.v.outputs.VERSION }}. See https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status
           files: claude-proxy-ext-src/*.vsix
-          body_path: release_notes.md
-          name: "${{ steps.get_version.outputs.TAG }} - Extension v${{ steps.ext_version.outputs.EXT_VERSION }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Summary
-        run: |
-          echo "## 🚀 Release Complete!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: ${{ steps.get_version.outputs.TAG }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Extension**: v${{ steps.ext_version.outputs.EXT_VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Open VSX**: https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status" >> $GITHUB_STEP_SUMMARY
-          echo "- **GitHub Release**: Created with VSIX attached" >> $GITHUB_STEP_SUMMARY
+          make_latest: 'false'

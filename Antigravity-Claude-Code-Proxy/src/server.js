@@ -16,7 +16,15 @@ import { PerplexitySessionAccountManager } from './perplexity-session-account-ma
 import { getLoginService } from './perplexity-browser-login.js';
 import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
-import { REQUEST_BODY_LIMIT, DEFAULT_HOST, resolveModelAlias } from './constants.js';
+import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, resolveModelAlias } from './constants.js';
+import { rateLimit } from 'express-rate-limit';
+import { mapError } from './http/error-mapper.js';
+import { validateMessagesRequest, validateRoutingHeaders } from './http/validation.js';
+import { securityHeaders } from './http/security.js';
+import { detectModelSwitch } from './http/model-switch.js';
+import { registry, metricsMiddleware, setAccountCollector } from './http/metrics.js';
+import { RequestValidationError } from './errors.js';
+import { redactString } from './utils/redact.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
 import fs from 'fs';
@@ -36,7 +44,7 @@ if (!fs.existsSync(LOG_DIR)) {
 
 function logToFile(message) {
     const timestamp = new Date().toISOString();
-    const logLine = `[${timestamp}] ${message}\n`;
+    const logLine = `[${timestamp}] ${redactString(String(message))}\n`;
     fs.appendFileSync(LOG_FILE, logLine);
     console.log(message); // Also log to console
 }
@@ -47,7 +55,31 @@ function logRequest(type, model, source = 'unknown', durationMs = null) {
 }
 
 const app = express();
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(metricsMiddleware);
 const accountManager = new AccountManager();
+setAccountCollector(() => {
+    const status = accountManager.getStatus();
+    return [
+        { labels: { state: 'total' }, value: status.total },
+        { labels: { state: 'available' }, value: status.available },
+        { labels: { state: 'rate_limited' }, value: status.rateLimited },
+        { labels: { state: 'invalid' }, value: status.invalid }
+    ];
+});
+
+/**
+ * Append the proxy's model note to a system prompt without losing its shape:
+ * Anthropic allows a string or an array of text blocks (Claude Code sends blocks).
+ * @param {string|Array<object>|undefined} system - Client system prompt
+ * @param {string} note - Text to append
+ * @returns {string|Array<object>}
+ */
+function appendSystemNote(system, note) {
+    if (Array.isArray(system)) return [...system, { type: 'text', text: note.trim() }];
+    return (system || '') + note;
+}
 const perplexityAccountManager = new PerplexityAccountManager();
 const perplexityClient = new PerplexityClient(perplexityAccountManager);
 // Perplexity Session-based client (uses subscription instead of API keys)
@@ -413,6 +445,34 @@ app.use((req, res, next) => {
     next();
 });
 app.use(cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin)) }));
+
+// Per-client request budget. Generous enough for parallel Claude Code agents, low enough
+// to stop a runaway local script from hammering the account/model/restart endpoints.
+app.use(rateLimit({
+    windowMs: 60 * 1000,
+    limit: MANAGEMENT_RATE_LIMIT,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: req => req.path === '/v1/messages' || req.path === '/v1/messages/count_tokens',
+    handler: (req, res, next, options) => {
+        res.setHeader('retry-after', String(Math.ceil(options.windowMs / 1000)));
+        res.status(429).json({
+            type: 'error',
+            error: { type: 'rate_limit_error', message: 'Too many requests to the proxy. Slow down and retry.' }
+        });
+    }
+}));
+
+// While shutting down, answer new requests on kept-alive sockets with 503 so clients reconnect elsewhere
+app.use((req, res, next) => {
+    // /livez stays 200 while draining so an orchestrator does not kill the process mid-drain
+    if (req.app.locals.isDraining?.() && req.path !== '/livez') {
+        res.setHeader('connection', 'close');
+        return res.status(503).json({ type: 'error', error: { type: 'api_error', message: 'Proxy is shutting down' } });
+    }
+    next();
+});
+
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 
 // Serve static files (dashboard)
@@ -627,16 +687,16 @@ app.delete('/google-accounts/:email', async (req, res) => {
 import { getAuthorizationUrl, startCallbackServer, completeOAuthFlow, closeCallbackServer } from './oauth.js';
 
 // Track multiple OAuth flows by state (enables back-to-back logins)
-const oauthFlows = new Map();
+const signInFlows = new Map();
 const OAUTH_FLOW_TIMEOUT_MS = 180000; // 3 minutes - auto-cleanup stale flows
 
 // Helper to cleanup stale OAuth flows
 function cleanupStaleOAuthFlows() {
     const now = Date.now();
-    for (const [state, flow] of oauthFlows) {
+    for (const [state, flow] of signInFlows) {
         if (now - flow.startedAt > OAUTH_FLOW_TIMEOUT_MS) {
-            console.log(`[OAuth] Cleaning up stale flow ${state.slice(0, 8)}...`);
-            oauthFlows.delete(state);
+            console.log('[OAuth] Cleaning up a stale sign-in flow');
+            signInFlows.delete(state);
         }
     }
 }
@@ -650,15 +710,15 @@ app.get('/oauth/start', async (req, res) => {
         const { url, verifier, state } = getAuthorizationUrl();
 
         // Store this flow (allows multiple concurrent flows)
-        oauthFlows.set(state, { verifier, startedAt: Date.now() });
-        console.log(`[OAuth] Started flow ${state.slice(0, 8)}... (${oauthFlows.size} active)`);
+        signInFlows.set(state, { verifier, startedAt: Date.now() });
+        console.log(`[OAuth] Started a sign-in flow (${signInFlows.size} active)`);
 
         // Start callback server in background (will handle any registered state)
         startCallbackServer(state, 120000).then(async (code) => {
             // Find the flow by state
-            const flow = oauthFlows.get(state);
+            const flow = signInFlows.get(state);
             if (!flow) {
-                console.log(`[OAuth] Flow ${state.slice(0, 8)}... already completed or cancelled`);
+                console.log('[OAuth] Sign-in flow already completed or cancelled');
                 return;
             }
 
@@ -679,11 +739,11 @@ app.get('/oauth/start', async (req, res) => {
             } catch (err) {
                 console.error('[OAuth] Failed to complete flow:', err.message);
             } finally {
-                oauthFlows.delete(state);
+                signInFlows.delete(state);
             }
         }).catch(err => {
             console.error('[OAuth] Callback error:', err.message);
-            oauthFlows.delete(state);
+            signInFlows.delete(state);
         });
 
         // Redirect user to Google OAuth
@@ -699,16 +759,16 @@ app.get('/oauth/start', async (req, res) => {
 app.get('/oauth/status', (req, res) => {
     cleanupStaleOAuthFlows();
     res.json({
-        inProgress: oauthFlows.size > 0,
-        activeFlows: oauthFlows.size,
-        startedAt: oauthFlows.size > 0 ? [...oauthFlows.values()][0]?.startedAt : null
+        inProgress: signInFlows.size > 0,
+        activeFlows: signInFlows.size,
+        startedAt: signInFlows.size > 0 ? [...signInFlows.values()][0]?.startedAt : null
     });
 });
 
 // Cancel all OAuth flows
 app.delete('/oauth/cancel', (req, res) => {
-    const count = oauthFlows.size;
-    oauthFlows.clear();
+    const count = signInFlows.size;
+    signInFlows.clear();
     closeCallbackServer();
     res.json({ success: true, message: `Cancelled ${count} OAuth flow(s)` });
 });
@@ -782,53 +842,62 @@ app.get('/perplexity-stats', async (req, res) => {
 });
 
 /**
- * Parse error message to extract error type, status code, and user-friendly message
+ * Send an Anthropic-style error response (or an SSE error event once streaming has started).
+ * @param {import('express').Response} res
+ * @param {unknown} error
+ * @param {{status?: number, type?: string, message?: string}} [override] - Replace parts of the mapped error
  */
-function parseError(error) {
-    let errorType = 'api_error';
-    let statusCode = 500;
-    let errorMessage = error.message;
-
-    if (error.message.includes('401') || error.message.includes('UNAUTHENTICATED')) {
-        errorType = 'authentication_error';
-        statusCode = 401;
-        errorMessage = 'Authentication failed. Make sure Antigravity is running with a valid token.';
-    } else if (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED') || error.message.includes('QUOTA_EXHAUSTED')) {
-        errorType = 'invalid_request_error';  // Use invalid_request_error to force client to purge/stop
-        statusCode = 400;  // Use 400 to ensure client does not retry (429 and 529 trigger retries)
-
-        // Try to extract the quota reset time from the error
-        const resetMatch = error.message.match(/quota will reset after (\d+h\d+m\d+s|\d+m\d+s|\d+s)/i);
-        const modelMatch = error.message.match(/"model":\s*"([^"]+)"/);
-        const model = modelMatch ? modelMatch[1] : 'the model';
-
-        if (resetMatch) {
-            errorMessage = `You have exhausted your capacity on ${model}. Quota will reset after ${resetMatch[1]}.`;
-        } else {
-            errorMessage = `You have exhausted your capacity on ${model}. Please wait for your quota to reset.`;
-        }
-    } else if (error.message.includes('invalid_request_error') || error.message.includes('INVALID_ARGUMENT')) {
-        errorType = 'invalid_request_error';
-        statusCode = 400;
-        const msgMatch = error.message.match(/"message":"([^"]+)"/);
-        if (msgMatch) errorMessage = msgMatch[1];
-    } else if (error.message.includes('All endpoints failed')) {
-        errorType = 'api_error';
-        statusCode = 503;
-        errorMessage = 'Unable to connect to Claude API. Check that Antigravity is running.';
-    } else if (error.message.includes('PERMISSION_DENIED')) {
-        errorType = 'permission_error';
-        statusCode = 403;
-        errorMessage = 'Permission denied. Check your Antigravity license.';
+function sendError(res, error, override = {}) {
+    const mapped = { ...mapError(error, { rateLimitStatus: RATE_LIMIT_STATUS }), ...override };
+    const payload = { type: 'error', error: { type: mapped.type, message: mapped.message } };
+    if (res.headersSent) {
+        res.write(`event: error\ndata: ${JSON.stringify(payload)}\n\n`);
+        res.end();
+        return;
     }
-
-    return { errorType, statusCode, errorMessage };
+    if (mapped.retryAfterSeconds) res.setHeader('retry-after', String(mapped.retryAfterSeconds));
+    res.status(mapped.status).json(payload);
 }
 
 // Request logging middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
     next();
+});
+
+/**
+ * Liveness: the process is up and serving HTTP. No upstream or disk access.
+ */
+app.get('/livez', (req, res) => {
+    res.json({ status: 'ok' });
+});
+
+/**
+ * Readiness: at least one usable account and not draining.
+ */
+app.get('/readyz', async (req, res) => {
+    try {
+        await ensureInitialized();
+        const status = accountManager.getStatus();
+        const ready = status.available > 0;
+        res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', available: status.available });
+    } catch (error) {
+        res.status(503).json({ status: 'not_ready', error: redactString(error.message) });
+    }
+});
+
+/**
+ * Prometheus metrics (text exposition format 0.0.4)
+ */
+app.get('/metrics', async (req, res) => {
+    try {
+        await ensureInitialized();
+    } catch {
+        // Metrics stay available even when no account could be loaded
+    }
+    // res.end() keeps the exact Prometheus content type (res.send() would reorder its parameters)
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.end(registry.render());
 });
 
 /**
@@ -1173,6 +1242,15 @@ app.post('/v1/messages/count_tokens', (req, res) => {
  */
 app.post('/v1/messages', async (req, res) => {
     try {
+        // Reject malformed requests before touching accounts or the upstream
+        // req.is() is false only when a body was sent with a non-JSON content type
+        const problems = req.is('json') === false
+            ? ['content-type: must be application/json']
+            : [...validateMessagesRequest(req.body), ...validateRoutingHeaders(req.headers)];
+        if (problems.length > 0) {
+            throw new RequestValidationError(problems);
+        }
+
         // Ensure account manager is initialized
         await ensureInitialized();
 
@@ -1194,22 +1272,12 @@ app.post('/v1/messages', async (req, res) => {
             thinking,
             top_p,
             top_k,
-            temperature
+            temperature,
+            stop_sequences
         } = req.body;
 
         // DEBUG: Log that we received a message request
         console.log(`[DEBUG] POST /v1/messages received - model: ${model}, messages: ${messages?.length} msgs`);
-
-        // Validate required fields
-        if (!messages || !Array.isArray(messages)) {
-            return res.status(400).json({
-                type: 'error',
-                error: {
-                    type: 'invalid_request_error',
-                    message: 'messages is required and must be an array'
-                }
-            });
-        }
 
         // ================= NATURAL LANGUAGE MODEL SWITCHING =================
         // Detect phrases like "switch to grok", "use pro model", "change model to flash"
@@ -1221,29 +1289,19 @@ app.post('/v1/messages', async (req, res) => {
                     ? lastUserMsg.content.filter(c => c.type === 'text').map(c => c.text).join(' ').toLowerCase()
                     : '');
 
-            // Pattern matching for model switch commands
-            const switchPatterns = [
-                /^\/model\s+(\w+[-\w]*)/i,  // Explicit /model command: "/model thinking"
-                /(?:switch|change|use|set)\s+(?:to|the)?\s*(?:model\s+)?(?:to\s+)?(\w+[-\w]*)/i,
-                /(?:model|switch)\s+(?:to\s+)?(\w+[-\w]*)/i
-            ];
-
-            for (const pattern of switchPatterns) {
-                const match = msgText.match(pattern);
-                if (match && match[1]) {
-                    const requestedModel = match[1].toLowerCase();
-                    const resolved = resolveModelAlias(requestedModel);
-                    if (resolved && resolved !== requestedModel) {
-                        setActiveModel(resolved);
-                        console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved}`);
-                    } else if (['flash', 'pro', 'grok', 'opus', 'sonnet', 'kimi', 'gpt', 'perplexity', 'think', 'thinking', 'strong', 'powerful', 'fast', 'quick', 'search', 'sonar'].includes(requestedModel)) {
-                        const resolved2 = resolveModelAlias(requestedModel);
-                        if (resolved2) {
-                            setActiveModel(resolved2);
-                            console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved2}`);
-                        }
+            // Pattern matching for model switch commands (linear-time; see http/model-switch.js)
+            const requestedModel = detectModelSwitch(msgText);
+            if (requestedModel) {
+                const resolved = resolveModelAlias(requestedModel);
+                if (resolved && resolved !== requestedModel) {
+                    setActiveModel(resolved);
+                    console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved}`);
+                } else if (['flash', 'pro', 'grok', 'opus', 'sonnet', 'kimi', 'gpt', 'perplexity', 'think', 'thinking', 'strong', 'powerful', 'fast', 'quick', 'search', 'sonar'].includes(requestedModel)) {
+                    const resolved2 = resolveModelAlias(requestedModel);
+                    if (resolved2) {
+                        setActiveModel(resolved2);
+                        console.log(`[NL-Switch] Natural language model switch: "${requestedModel}" → ${resolved2}`);
                     }
-                    break;
                 }
             }
         }
@@ -1275,7 +1333,7 @@ app.post('/v1/messages', async (req, res) => {
             const resolvedHeader = resolveModelAlias(headerOverrideModel);
             console.log(`[API] Per-window model override via header: ${headerOverrideModel} → ${resolvedHeader}`);
             // Use header model directly, skip smart routing
-            const enhancedSystem = (system || '') + `\n[SYSTEM INFO: You are currently running on ${resolvedHeader} via Antigravity Claude Proxy.]`;
+            const enhancedSystem = appendSystemNote(system, `\n[SYSTEM INFO: You are currently running on ${resolvedHeader} via Antigravity Claude Proxy.]`);
 
             const request = {
                 model: resolvedHeader,
@@ -1356,23 +1414,30 @@ app.post('/v1/messages', async (req, res) => {
 
         // ================= MODEL INFO INJECTION =================
         // Add active model info to system prompt so AI knows what it's using
-        let enhancedSystem = system || '';
         const modelInfo = `\n[SYSTEM INFO: You are currently running on ${resolvedModel} via Antigravity Claude Proxy.]`;
-        enhancedSystem = enhancedSystem + modelInfo;
+        const enhancedSystem = appendSystemNote(system, modelInfo);
 
         const request = {
             model: resolvedModel,
             messages,
             max_tokens: max_tokens || 4096,
             stream,
-            system: enhancedSystem || system,  // Use enhanced system with model info
+            system: enhancedSystem,  // Client system prompt plus the active-model note
             tools,
             tool_choice,
             thinking,
             top_p,
             top_k,
-            temperature
+            temperature,
+            stop_sequences
         };
+
+        // Let the upstream client stop retrying once the caller has gone away
+        const clientGone = new AbortController();
+        res.on('close', () => {
+            if (!res.writableEnded) clientGone.abort();
+        });
+        request.signal = clientGone.signal;
 
         const requestStartTime = Date.now();
         console.log(`[API] Request for model: ${request.model}, stream: ${!!stream}, messages: ${messages.length}`);
@@ -1427,7 +1492,8 @@ app.post('/v1/messages', async (req, res) => {
                 };
 
                 if (system) {
-                    openaiPayload.messages.unshift({ role: 'system', content: system });
+                    const systemText = Array.isArray(system) ? system.map(b => b.text).join('\n') : system;
+                    openaiPayload.messages.unshift({ role: 'system', content: systemText });
                 }
 
                 console.log(`[API] Forwarding to Python server: ${pythonServerUrl} (stream: ${stream})`);
@@ -1538,25 +1604,24 @@ app.post('/v1/messages', async (req, res) => {
                 }
             } catch (err) {
                 console.error('[API] Perplexity Error:', err);
-                const { errorType, errorMessage } = parseError(err);
-                res.status(500).json({
-                    type: 'error',
-                    error: { type: errorType, message: errorMessage }
-                });
+                sendError(res, err);
             }
         } else if (stream) {
-            // Handle streaming response
+            // Handle streaming response. Headers are held back until the upstream produces its
+            // first event: failures before that point (auth, rate limits, retries exhausted,
+            // timeouts) get their real HTTP status and retry-after, which clients act on.
+            const events = sendMessageStream(request, accountManager)[Symbol.asyncIterator]();
+            const first = await events.next(); // throws to the outer catch -> sendError with status
+
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
             res.setHeader('X-Accel-Buffering', 'no');
-
-            // Flush headers immediately to start the stream
             res.flushHeaders();
 
             try {
-                // Use the streaming generator with account manager
-                for await (const event of sendMessageStream(request, accountManager)) {
+                for (let item = first; !item.done; item = await events.next()) {
+                    const event = item.value;
                     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
                     // Flush after each event for real-time streaming
                     if (res.flush) res.flush();
@@ -1568,15 +1633,9 @@ app.post('/v1/messages', async (req, res) => {
                 res.end();
 
             } catch (streamError) {
+                // Mid-stream failure: the status is already 200, so report it as an SSE error event
                 console.error('[API] Stream error:', streamError);
-
-                const { errorType, errorMessage } = parseError(streamError);
-
-                res.write(`event: error\ndata: ${JSON.stringify({
-                    type: 'error',
-                    error: { type: errorType, message: errorMessage }
-                })}\n\n`);
-                res.end();
+                sendError(res, streamError);
             }
 
         } else {
@@ -1592,40 +1651,24 @@ app.post('/v1/messages', async (req, res) => {
     } catch (error) {
         console.error('[API] Error:', error);
 
-        let { errorType, statusCode, errorMessage } = parseError(error);
+        const mapped = mapError(error, { rateLimitStatus: RATE_LIMIT_STATUS });
+        let message = mapped.message;
 
         // For auth errors, try to refresh token
-        if (errorType === 'authentication_error') {
+        if (mapped.type === 'authentication_error') {
             console.log('[API] Token might be expired, attempting refresh...');
             try {
                 accountManager.clearProjectCache();
                 accountManager.clearTokenCache();
                 await forceRefresh();
-                errorMessage = 'Token was expired and has been refreshed. Please retry your request.';
+                message = 'Token was expired and has been refreshed. Please retry your request.';
             } catch (refreshError) {
-                errorMessage = 'Could not refresh token. Make sure Antigravity is running.';
+                message = 'Could not refresh token. Make sure Antigravity is running.';
             }
         }
 
-        console.log(`[API] Returning error response: ${statusCode} ${errorType} - ${errorMessage}`);
-
-        // Check if headers have already been sent (for streaming that failed mid-way)
-        if (res.headersSent) {
-            console.log('[API] Headers already sent, writing error as SSE event');
-            res.write(`event: error\ndata: ${JSON.stringify({
-                type: 'error',
-                error: { type: errorType, message: errorMessage }
-            })}\n\n`);
-            res.end();
-        } else {
-            res.status(statusCode).json({
-                type: 'error',
-                error: {
-                    type: errorType,
-                    message: errorMessage
-                }
-            });
-        }
+        console.log(`[API] Returning error response: ${mapped.status} ${mapped.type} - ${message}`);
+        sendError(res, error, { message });
     }
 });
 
@@ -1640,6 +1683,19 @@ app.use('*', (req, res) => {
             message: `Endpoint ${req.method} ${req.originalUrl} not found`
         }
     });
+});
+
+/**
+ * Error handler: body-parser failures (malformed JSON, oversized bodies) and anything a
+ * route forwards with next(err) become Anthropic-style JSON errors, never an HTML page.
+ */
+app.use((err, req, res, next) => {
+    // Response already under way: let Express close the connection
+    if (res.headersSent) return next(err);
+    if (!(err && err.type && String(err.type).startsWith('entity.'))) {
+        console.error('[Server] Unhandled route error:', err);
+    }
+    sendError(res, err);
 });
 
 export default app;

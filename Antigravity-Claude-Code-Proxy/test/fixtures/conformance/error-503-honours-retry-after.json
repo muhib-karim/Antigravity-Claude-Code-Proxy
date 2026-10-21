@@ -1,0 +1,68 @@
+{
+  "name": "error-503-honours-retry-after",
+  "profile": "default",
+  "description": "A 503 with Retry-After: 1 is retried no sooner than one second later.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 503,
+      "headers": {
+        "retry-after": "1"
+      },
+      "json": {
+        "error": {
+          "code": 503,
+          "message": "The service is currently unavailable.",
+          "status": "UNAVAILABLE"
+        }
+      }
+    },
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "back"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent", "/v1internal:generateContent"],
+    "minElapsedMs": 950,
+    "body": {
+      "content": [
+        {
+          "type": "text",
+          "text": "back"
+        }
+      ]
+    }
+  }
+}

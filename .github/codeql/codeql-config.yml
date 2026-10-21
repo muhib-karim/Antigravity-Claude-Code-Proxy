@@ -1,0 +1,9 @@
+name: proxy-codeql
+# Default security query suite over the shipped code. Tests, fixtures and archived
+# one-off scripts are not shipped and are excluded to keep results about the product.
+paths-ignore:
+  - '**/node_modules/**'
+  - 'Antigravity-Claude-Code-Proxy/tests/**'
+  - 'Antigravity-Claude-Code-Proxy/test/**'
+  - 'Antigravity-Claude-Code-Proxy/coverage/**'
+  - 'scripts/_archive/**'

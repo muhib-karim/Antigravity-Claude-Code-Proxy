@@ -1,0 +1,26 @@
+{
+  "name": "validation-malformed-json",
+  "profile": "default",
+  "description": "A body that is not JSON -> 400 invalid_request_error (JSON, not an HTML error page).",
+  "request": {
+    "rawBody": "{\"model\": \"gemini-3-flash\", \"messages\": [",
+    "headers": {
+      "content-type": "application/json"
+    }
+  },
+  "upstream": [],
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "$contains:application/json"
+    },
+    "upstreamCalls": [],
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "invalid_request_error",
+        "message": "Request body is not valid JSON"
+      }
+    }
+  }
+}

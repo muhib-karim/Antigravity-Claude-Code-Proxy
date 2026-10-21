@@ -109,7 +109,7 @@ export class PerplexityAccountManager {
             account.isRateLimited = true;
             // Default 1 minute cooldown, can be smarter
             account.rateLimitResetTime = Date.now() + 60 * 1000;
-            console.log(`[PerplexityAccountManager] Marked account ending in ...${apiKey.slice(-5)} as rate limited.`);
+            console.log('[PerplexityAccountManager] Marked an account as rate limited for 60s.');
             await this.save();
         }
     }

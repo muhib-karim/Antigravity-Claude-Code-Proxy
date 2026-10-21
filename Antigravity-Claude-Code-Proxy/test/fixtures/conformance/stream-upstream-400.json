@@ -1,0 +1,44 @@
+{
+  "name": "stream-upstream-400",
+  "profile": "default",
+  "description": "Streaming request failing before the first event: real HTTP status and an Anthropic JSON error, not a 200 stream.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "stream": true
+    }
+  },
+  "upstream": [
+    {
+      "status": 400,
+      "json": {
+        "error": {
+          "code": 400,
+          "message": "Bad schema in tools",
+          "status": "INVALID_ARGUMENT"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 400,
+    "headers": {
+      "content-type": "$contains:application/json"
+    },
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "invalid_request_error",
+        "message": "Bad schema in tools"
+      }
+    }
+  }
+}

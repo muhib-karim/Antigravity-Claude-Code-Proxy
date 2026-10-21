@@ -1,0 +1,39 @@
+{
+  "name": "error-403",
+  "profile": "default",
+  "description": "Upstream 403 PERMISSION_DENIED -> 403 permission_error.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 403,
+      "json": {
+        "error": {
+          "code": 403,
+          "message": "The caller does not have permission",
+          "status": "PERMISSION_DENIED"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 403,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "error": {
+        "type": "permission_error",
+        "message": "The caller does not have permission"
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "validation-bad-fields",
+  "profile": "default",
+  "description": "Every invalid field is listed in one 400.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": -1,
+      "temperature": 7,
+      "messages": [
+        {
+          "role": "robot",
+          "content": "hi"
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "upstream": [],
+  "expect": {
+    "status": 400,
+    "upstreamCalls": [],
+    "body": {
+      "error": {
+        "type": "invalid_request_error",
+        "message": "messages[0].role: must be \"user\" or \"assistant\"; messages[1].content[0].tool_use_id: must be a non-empty string; max_tokens: must be a positive integer; temperature: must be a number between 0 and 1"
+      }
+    }
+  }
+}

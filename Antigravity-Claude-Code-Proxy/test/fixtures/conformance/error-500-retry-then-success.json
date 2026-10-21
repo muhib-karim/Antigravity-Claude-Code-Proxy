@@ -1,0 +1,64 @@
+{
+  "name": "error-500-retry-then-success",
+  "profile": "default",
+  "description": "A transient 500 is retried with backoff and the second attempt succeeds.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "status": 500,
+      "json": {
+        "error": {
+          "code": 500,
+          "message": "Internal error encountered.",
+          "status": "INTERNAL"
+        }
+      }
+    },
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "second time lucky"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent", "/v1internal:generateContent"],
+    "body": {
+      "content": [
+        {
+          "type": "text",
+          "text": "second time lucky"
+        }
+      ]
+    }
+  }
+}

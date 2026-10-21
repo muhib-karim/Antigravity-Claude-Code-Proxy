@@ -1,0 +1,56 @@
+{
+  "name": "header-allow-list",
+  "profile": "default",
+  "description": "Client credentials and cookies are never forwarded upstream; the proxy sends its own account token.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    },
+    "headers": {
+      "authorization": "Bearer client-secret-123",
+      "x-api-key": "client-key-456",
+      "cookie": "sid=abc",
+      "x-forwarded-for": "10.0.0.1"
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "ok"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "upstreamHeaders": {
+      "authorization": "Bearer mock-access-token"
+    },
+    "upstreamHeadersAbsent": ["x-api-key", "cookie", "x-forwarded-for"]
+  }
+}

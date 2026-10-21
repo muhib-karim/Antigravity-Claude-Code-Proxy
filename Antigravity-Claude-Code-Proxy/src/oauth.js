@@ -12,7 +12,12 @@ import {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
     ANTIGRAVITY_HEADERS,
     OAUTH_CONFIG,
-    OAUTH_REDIRECT_URI
+    OAUTH_REDIRECT_URI,
+    SIGN_IN_CLIENT_ID,
+    SIGN_IN_PAGE_URL,
+    SIGN_IN_CALLBACK_PORT,
+    SIGN_IN_REDIRECT_URI,
+    SIGN_IN_SCOPES
 } from './constants.js';
 
 /**
@@ -38,10 +43,10 @@ export function getAuthorizationUrl() {
     const state = crypto.randomBytes(16).toString('hex');
 
     const params = new URLSearchParams({
-        client_id: OAUTH_CONFIG.clientId,
-        redirect_uri: OAUTH_REDIRECT_URI,
+        client_id: SIGN_IN_CLIENT_ID,
+        redirect_uri: SIGN_IN_REDIRECT_URI,
         response_type: 'code',
-        scope: OAUTH_CONFIG.scopes.join(' '),
+        scope: SIGN_IN_SCOPES.join(' '),
         access_type: 'offline',
         prompt: 'consent',
         code_challenge: challenge,
@@ -50,7 +55,7 @@ export function getAuthorizationUrl() {
     });
 
     return {
-        url: `${OAUTH_CONFIG.authUrl}?${params.toString()}`,
+        url: `${SIGN_IN_PAGE_URL}?${params.toString()}`,
         verifier,
         state
     };
@@ -102,7 +107,7 @@ function ensurePersistentServer() {
     if (persistentServer) return;
 
     persistentServer = http.createServer((req, res) => {
-        const url = new URL(req.url, `http://localhost:${OAUTH_CONFIG.callbackPort}`);
+        const url = new URL(req.url, `http://localhost:${SIGN_IN_CALLBACK_PORT}`);
 
         if (url.pathname !== '/oauth-callback') {
             res.writeHead(404);
@@ -114,7 +119,7 @@ function ensurePersistentServer() {
         const state = url.searchParams.get('state');
         const error = url.searchParams.get('error');
 
-        console.log(`[OAuth] Callback received: state=${state?.slice(0, 8)}..., hasCode=${!!code}, error=${error || 'none'}`);
+        console.log(`[OAuth] Callback received: hasState=${!!state}, hasCode=${!!code}, error=${error || 'none'}`);
 
         // Look up the pending flow by state
         const flow = pendingFlows.get(state);
@@ -176,7 +181,7 @@ function ensurePersistentServer() {
         }
 
         // Success!
-        console.log(`[OAuth] Flow ${state.slice(0, 8)}... completed successfully`);
+        console.log('[OAuth] Sign-in flow completed successfully');
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`
             <html>
@@ -202,8 +207,8 @@ function ensurePersistentServer() {
         }
     });
 
-    persistentServer.listen(OAUTH_CONFIG.callbackPort, () => {
-        console.log(`[OAuth] Persistent callback server started on port ${OAUTH_CONFIG.callbackPort}`);
+    persistentServer.listen(SIGN_IN_CALLBACK_PORT, () => {
+        console.log(`[OAuth] Persistent callback server started on port ${SIGN_IN_CALLBACK_PORT}`);
     });
 }
 

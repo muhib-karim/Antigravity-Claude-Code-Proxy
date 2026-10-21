@@ -1,0 +1,21 @@
+# Keep the build context to what the image needs: package files, src/ and bin/
+node_modules
+coverage
+.nyc_output
+logs
+*.log
+test
+tests
+docs
+images
+scripts
+test-db.mjs
+.env
+.env.*
+accounts.json
+**/accounts.json
+*.token
+*.secret
+.git
+Dockerfile
+.dockerignore

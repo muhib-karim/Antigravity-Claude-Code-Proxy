@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Response Converter
  * Converts Google Generative AI responses to Anthropic Messages API format
@@ -10,7 +11,7 @@ import { cacheSignature } from './signature-cache.js';
 /**
  * Convert Google Generative AI response to Anthropic Messages API format
  *
- * @param {Object} googleResponse - Google format response (the inner response object)
+ * @param {any} googleResponse - Google format response (the inner response object)
  * @param {string} model - The model name used
  * @returns {Object} Anthropic format response
  */
@@ -49,6 +50,7 @@ export function convertGoogleToAnthropic(googleResponse, model) {
             // Convert functionCall to tool_use
             // Use the id from the response if available, otherwise generate one
             const toolId = part.functionCall.id || `toolu_${crypto.randomBytes(12).toString('hex')}`;
+            /** @type {Record<string, any>} */
             const toolUseBlock = {
                 type: 'tool_use',
                 id: toolId,

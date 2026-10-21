@@ -1,0 +1,85 @@
+{
+  "name": "tool-use",
+  "profile": "default",
+  "description": "Tools become functionDeclarations; a functionCall reply becomes a tool_use block with stop_reason tool_use.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather in Paris?"
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": ["city"]
+          }
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "call_1",
+                      "name": "get_weather",
+                      "args": {
+                        "city": "Paris"
+                      }
+                    }
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 8
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "body": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call_1",
+          "name": "get_weather",
+          "input": {
+            "city": "Paris"
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 20,
+        "output_tokens": 8
+      }
+    },
+    "upstreamContains": ["\"functionDeclarations\"", "\"name\":\"get_weather\""]
+  }
+}

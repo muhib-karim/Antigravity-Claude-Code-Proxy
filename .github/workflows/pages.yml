@@ -3,7 +3,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ["site/**", "docs/images/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/images/**", "docs/architecture/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -28,6 +28,8 @@ jobs:
           mkdir -p _site/images
           cp site/index.html _site/
           cp docs/images/*.png _site/images/
+          mkdir -p _site/architecture
+          cp docs/architecture/*.html _site/architecture/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

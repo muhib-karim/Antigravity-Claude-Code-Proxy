@@ -1,0 +1,120 @@
+{
+  "name": "thinking-gemini-nonstream",
+  "profile": "default",
+  "description": "A thinking model answering a non-streaming request: fetched over SSE, returned as thinking + text blocks with the signature.",
+  "request": {
+    "body": {
+      "model": "gemini-3-pro-high",
+      "max_tokens": 256,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why is the sky blue?"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "sse": [
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Considering ",
+                      "thought": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 9,
+              "candidatesTokenCount": 2
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Rayleigh scattering.",
+                      "thought": true,
+                      "thoughtSignature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+                    }
+                  ]
+                }
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 9,
+              "candidatesTokenCount": 5
+            }
+          }
+        },
+        {
+          "response": {
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "Shorter wavelengths scatter more."
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 9,
+              "candidatesTokenCount": 12
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:streamGenerateContent?alt=sse"],
+    "body": {
+      "model": "gemini-3-pro-high",
+      "stop_reason": "end_turn",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "Considering Rayleigh scattering.",
+          "signature": "synthetic-thought-signature-0000000000000000000000000000000000000000"
+        },
+        {
+          "type": "text",
+          "text": "Shorter wavelengths scatter more."
+        }
+      ],
+      "usage": {
+        "input_tokens": 9,
+        "output_tokens": 12
+      }
+    },
+    "upstreamRequest": {
+      "request": {
+        "generationConfig": {
+          "thinkingConfig": {
+            "includeThoughts": true,
+            "thinkingBudget": 16000
+          }
+        }
+      }
+    }
+  }
+}

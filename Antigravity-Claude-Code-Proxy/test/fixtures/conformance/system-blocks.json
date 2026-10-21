@@ -1,0 +1,61 @@
+{
+  "name": "system-blocks",
+  "profile": "default",
+  "description": "An array of system text blocks (what Claude Code sends) keeps every block; it must not be stringified.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "Block one"
+        },
+        {
+          "type": "text",
+          "text": "Block two",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "ok"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "upstreamContains": ["\"text\":\"Block one\"", "\"text\":\"Block two\""],
+    "upstreamNotContains": ["[object Object]"]
+  }
+}

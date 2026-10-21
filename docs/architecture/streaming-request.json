@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Streaming /v1/messages request",
+    "subtitle": "Claude Code -> proxy -> Google Cloud Code, with retries before the first byte",
+    "output": "docs/architecture/streaming-request.html",
+    "viewBox": [
+      1060,
+      680
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "d22715a0a4a5a6d171a77bb57027b215501a2566"
+    },
+    "legend": {
+      "entries": {
+        "emphasis": {
+          "label": "request path"
+        },
+        "dashed": {
+          "label": "retry after backoff"
+        },
+        "security": {
+          "label": "validation"
+        },
+        "return": {
+          "label": "response"
+        },
+        "default": {
+          "label": "call"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "Anthropic client"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "server.js",
+      "sublabel": "Express route",
+      "sources": [
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/server.js",
+          "line": 1243,
+          "end_line": 1252,
+          "label": "route + validation"
+        },
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/server.js",
+          "line": 1609,
+          "end_line": 1640,
+          "label": "headers after first event"
+        }
+      ]
+    },
+    {
+      "id": "validation",
+      "type": "security",
+      "label": "validation.js",
+      "sublabel": "body + header checks",
+      "sources": [
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/http/validation.js",
+          "line": 137,
+          "end_line": 184,
+          "label": "Messages body"
+        },
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/http/validation.js",
+          "line": 209,
+          "end_line": 221,
+          "label": "routing headers"
+        }
+      ]
+    },
+    {
+      "id": "client_lib",
+      "type": "backend",
+      "label": "cloudcode-client.js",
+      "sublabel": "translate, retry, stream",
+      "sources": [
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/cloudcode-client.js",
+          "line": 662,
+          "end_line": 857,
+          "label": "sendMessageStream"
+        },
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/cloudcode-client.js",
+          "line": 104,
+          "end_line": 115,
+          "label": "backoff on transient errors"
+        },
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/format/request-converter.js",
+          "line": 31,
+          "end_line": 252,
+          "label": "Anthropic to Google"
+        }
+      ]
+    },
+    {
+      "id": "accounts",
+      "type": "database",
+      "label": "account-manager.js",
+      "sublabel": "sticky pool + cooldowns",
+      "sources": [
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/account-manager.js",
+          "line": 329,
+          "end_line": 349,
+          "label": "pickStickyAccount"
+        },
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/account-manager.js",
+          "line": 356,
+          "end_line": 376,
+          "label": "markRateLimited"
+        }
+      ]
+    },
+    {
+      "id": "upstream",
+      "type": "cloud",
+      "label": "Cloud Code API",
+      "sublabel": "Gemini + Claude models",
+      "sources": [
+        {
+          "path": "Antigravity-Claude-Code-Proxy/src/constants.js",
+          "line": 76,
+          "end_line": 82,
+          "label": "endpoint fallbacks"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 232,
+      "label": "Validate"
+    },
+    {
+      "from": 240,
+      "to": 318,
+      "label": "Pick account"
+    },
+    {
+      "from": 326,
+      "to": 452,
+      "label": "Upstream + retry"
+    },
+    {
+      "from": 460,
+      "to": 568,
+      "label": "Stream to client"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post-messages",
+      "from": "client",
+      "to": "server",
+      "y": 165,
+      "label": "POST /v1/messages (stream)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "validate",
+      "from": "server",
+      "to": "validation",
+      "y": 193,
+      "label": "validate body + headers",
+      "variant": "security"
+    },
+    {
+      "id": "validated",
+      "from": "validation",
+      "to": "server",
+      "y": 221,
+      "label": "ok (else 400 / 413)",
+      "variant": "return"
+    },
+    {
+      "id": "start-stream",
+      "from": "server",
+      "to": "client_lib",
+      "y": 252,
+      "label": "sendMessageStream()",
+      "variant": "default"
+    },
+    {
+      "id": "pick-account",
+      "from": "client_lib",
+      "to": "accounts",
+      "y": 280,
+      "label": "pickStickyAccount()",
+      "variant": "default"
+    },
+    {
+      "id": "account",
+      "from": "accounts",
+      "to": "client_lib",
+      "y": 308,
+      "label": "account + token",
+      "variant": "return"
+    },
+    {
+      "id": "call-upstream",
+      "from": "client_lib",
+      "to": "upstream",
+      "y": 340,
+      "label": "streamGenerateContent (SSE)",
+      "variant": "emphasis",
+      "note": "Google request format"
+    },
+    {
+      "id": "transient",
+      "from": "upstream",
+      "to": "client_lib",
+      "y": 384,
+      "label": "503 + Retry-After",
+      "variant": "return"
+    },
+    {
+      "id": "retry",
+      "from": "client_lib",
+      "to": "upstream",
+      "y": 412,
+      "label": "retry after backoff + jitter",
+      "variant": "dashed"
+    },
+    {
+      "id": "sse-ok",
+      "from": "upstream",
+      "to": "client_lib",
+      "y": 440,
+      "label": "200 text/event-stream",
+      "variant": "return"
+    },
+    {
+      "id": "first-event",
+      "from": "client_lib",
+      "to": "server",
+      "y": 470,
+      "label": "first Anthropic event",
+      "variant": "return"
+    },
+    {
+      "id": "headers",
+      "from": "server",
+      "to": "client",
+      "y": 498,
+      "label": "200 + message_start",
+      "variant": "emphasis"
+    },
+    {
+      "id": "more-events",
+      "from": "client_lib",
+      "to": "server",
+      "y": 526,
+      "label": "content_block_* events",
+      "variant": "return"
+    },
+    {
+      "id": "stream-out",
+      "from": "server",
+      "to": "client",
+      "y": 554,
+      "label": "deltas ... message_stop",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "server",
+      "from": 160,
+      "to": 560,
+      "type": "backend"
+    },
+    {
+      "participant": "validation",
+      "from": 188,
+      "to": 227,
+      "type": "security"
+    },
+    {
+      "participant": "client_lib",
+      "from": 247,
+      "to": 532,
+      "type": "backend"
+    },
+    {
+      "participant": "accounts",
+      "from": 275,
+      "to": 314,
+      "type": "database"
+    },
+    {
+      "participant": "upstream",
+      "from": 335,
+      "to": 446,
+      "type": "cloud"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Before the first byte",
+      "items": [
+        "Response headers wait for the first upstream event",
+        "Failures keep their real status: 400, 401, 429, 504 or 529",
+        "retry-after is sent when the reset time is known"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Retries",
+      "items": [
+        "5xx, network and timeout errors: up to UPSTREAM_RETRIES per request",
+        "Exponential backoff with jitter; a longer Retry-After wins",
+        "A 429 cools the account down and rotates to the next one"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "After the first byte",
+      "items": [
+        "A started stream is never replayed or moved to another account",
+        "A mid-stream failure becomes an SSE error event",
+        "Client disconnect stops further upstream retries"
+      ]
+    }
+  ]
+}

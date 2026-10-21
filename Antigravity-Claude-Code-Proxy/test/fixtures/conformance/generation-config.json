@@ -1,0 +1,61 @@
+{
+  "name": "generation-config",
+  "profile": "default",
+  "description": "Sampling parameters and stop sequences map to generationConfig.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ],
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "top_k": 40,
+      "stop_sequences": ["END", "STOP_HERE"]
+    }
+  },
+  "upstream": [
+    {
+      "json": {
+        "response": {
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "ok"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 7,
+            "candidatesTokenCount": 5
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "status": 200,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "upstreamRequest": {
+      "request": {
+        "generationConfig": {
+          "maxOutputTokens": 64,
+          "temperature": 0.2,
+          "topP": 0.9,
+          "topK": 40,
+          "stopSequences": ["END", "STOP_HERE"]
+        }
+      }
+    }
+  }
+}

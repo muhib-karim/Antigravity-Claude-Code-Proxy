@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Constants for Antigravity Cloud Code API integration
  * Based on: https://github.com/NoeFabris/opencode-antigravity-auth
@@ -20,7 +21,8 @@ config();
  * @returns {string|undefined} The environment variable value or default
  */
 function getEnv(name, defaultValue = undefined) {
-    return process.env[name] ?? defaultValue;
+    const value = process.env[name] ?? defaultValue;
+    return value === undefined ? undefined : String(value);
 }
 
 /**
@@ -71,8 +73,9 @@ const ANTIGRAVITY_ENDPOINT_PROD = 'https://cloudcode-pa.googleapis.com';
 
 // Endpoint fallback order (daily → prod)
 // Can be overridden with a comma-separated CLOUDCODE_ENDPOINTS list (e.g. for a local mock in tests)
-export const ANTIGRAVITY_ENDPOINT_FALLBACKS = getEnv('CLOUDCODE_ENDPOINTS')
-    ? getEnv('CLOUDCODE_ENDPOINTS').split(',').map(e => e.trim().replace(/\/+$/, '')).filter(Boolean)
+const ENDPOINT_OVERRIDE = getEnv('CLOUDCODE_ENDPOINTS');
+export const ANTIGRAVITY_ENDPOINT_FALLBACKS = ENDPOINT_OVERRIDE
+    ? ENDPOINT_OVERRIDE.split(',').map(e => e.trim().replace(/\/+$/, '')).filter(Boolean)
     : [
         ANTIGRAVITY_ENDPOINT_DAILY,
         ANTIGRAVITY_ENDPOINT_PROD
@@ -97,7 +100,8 @@ export const DEFAULT_PORT = getEnvInt('PORT', 8080);
 // Bind to loopback by default so the proxy (and the accounts behind it) is not exposed to the network.
 // Set HOST=0.0.0.0 to listen on all interfaces.
 export const DEFAULT_HOST = getEnv('HOST', '127.0.0.1');
-export const REQUEST_BODY_LIMIT = getEnv('REQUEST_BODY_LIMIT', '50mb');
+// Matches the Anthropic Messages API request size limit; larger bodies get a 413 request_too_large
+export const REQUEST_BODY_LIMIT = getEnv('REQUEST_BODY_LIMIT', '32mb');
 
 // Token and timing configuration
 export const TOKEN_REFRESH_INTERVAL_MS = getEnvInt('TOKEN_REFRESH_INTERVAL', 5 * 60 * 1000); // 5 minutes
@@ -121,6 +125,20 @@ export const MAX_ACCOUNTS = getEnvInt('MAX_ACCOUNTS', 10); // Maximum number of 
 
 // Request timeout (new)
 export const REQUEST_TIMEOUT_MS = getEnvInt('REQUEST_TIMEOUT', 60000); // 60 seconds default
+
+// Upstream resilience: retries for 5xx/network/timeout errors (per request), exponential backoff with jitter
+export const UPSTREAM_RETRIES = getEnvInt('UPSTREAM_RETRIES', 2);
+export const RETRY_BASE_MS = getEnvInt('RETRY_BASE_MS', 500);
+export const RETRY_MAX_MS = getEnvInt('RETRY_MAX_MS', 8000);
+
+// Status returned when every account is out of quota: 400 (default, stops client retries) or 429 (+ retry-after)
+export const RATE_LIMIT_STATUS = getEnvInt('RATE_LIMIT_STATUS', 400) === 429 ? 429 : 400;
+
+// Requests per minute per client for the management/dashboard endpoints (the Messages API is not limited)
+export const MANAGEMENT_RATE_LIMIT = getEnvInt('MANAGEMENT_RATE_LIMIT', 300);
+
+// How long a graceful shutdown waits for in-flight requests before closing sockets
+export const SHUTDOWN_TIMEOUT_MS = getEnvInt('SHUTDOWN_TIMEOUT', 30000);
 
 // Antigravity auth port
 export const ANTIGRAVITY_AUTH_PORT = getEnvInt('ANTIGRAVITY_AUTH_PORT', 9092);
@@ -240,7 +258,7 @@ export const MODEL_ALIASES = {
  */
 export function resolveModelAlias(modelName) {
     const lower = (modelName || '').toLowerCase().trim();
-    return MODEL_ALIASES[lower] || modelName;
+    return /** @type {Record<string, string>} */ (MODEL_ALIASES)[lower] || modelName;
 }
 
 /**
@@ -272,23 +290,32 @@ export function isThinkingModel(modelName) {
 const DEFAULT_OAUTH_CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
 // The client secret is not stored in the repository: set GOOGLE_OAUTH_CLIENT_SECRET in the environment (or .env).
 
-// Google OAuth configuration
+// Google sign-in settings. None of these are secret: they appear in the sign-in URL the
+// user opens. They are kept apart from the client secret so code that prints the URL or
+// the callback port never reads from the object that holds the secret.
+export const SIGN_IN_CLIENT_ID = getEnv('GOOGLE_OAUTH_CLIENT_ID', DEFAULT_OAUTH_CLIENT_ID);
+export const SIGN_IN_PAGE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+export const SIGN_IN_CALLBACK_PORT = getEnvInt('OAUTH_CALLBACK_PORT', 51121);
+export const SIGN_IN_REDIRECT_URI = `http://localhost:${SIGN_IN_CALLBACK_PORT}/oauth-callback`;
+export const SIGN_IN_SCOPES = [
+    'https://www.googleapis.com/auth/cloud-platform',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/cclog',
+    'https://www.googleapis.com/auth/experimentsandconfigs'
+];
+
+// Google OAuth configuration (token exchange; holds the client secret)
 export const OAUTH_CONFIG = {
-    clientId: getEnv('GOOGLE_OAUTH_CLIENT_ID', DEFAULT_OAUTH_CLIENT_ID),
+    clientId: SIGN_IN_CLIENT_ID,
     clientSecret: getEnv('GOOGLE_OAUTH_CLIENT_SECRET', ''),
-    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    authUrl: SIGN_IN_PAGE_URL,
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
-    callbackPort: getEnvInt('OAUTH_CALLBACK_PORT', 51121),
-    scopes: [
-        'https://www.googleapis.com/auth/cloud-platform',
-        'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/userinfo.profile',
-        'https://www.googleapis.com/auth/cclog',
-        'https://www.googleapis.com/auth/experimentsandconfigs'
-    ]
+    callbackPort: SIGN_IN_CALLBACK_PORT,
+    scopes: SIGN_IN_SCOPES
 };
-export const OAUTH_REDIRECT_URI = `http://localhost:${OAUTH_CONFIG.callbackPort}/oauth-callback`;
+export const OAUTH_REDIRECT_URI = SIGN_IN_REDIRECT_URI;
 
 export default {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
@@ -309,6 +336,12 @@ export default {
     RATE_LIMIT_PROGRESS_INTERVAL_MS,
     MAX_RATE_LIMIT_WAIT_MS,
     REQUEST_TIMEOUT_MS,
+    UPSTREAM_RETRIES,
+    RETRY_BASE_MS,
+    RETRY_MAX_MS,
+    RATE_LIMIT_STATUS,
+    MANAGEMENT_RATE_LIMIT,
+    SHUTDOWN_TIMEOUT_MS,
     MIN_SIGNATURE_LENGTH,
     GEMINI_MAX_OUTPUT_TOKENS,
     GEMINI_SKIP_SIGNATURE,

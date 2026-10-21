@@ -1,0 +1,35 @@
+{
+  "name": "strict-error-timeout",
+  "profile": "strict",
+  "description": "An upstream that never answers -> 504 timeout_error once REQUEST_TIMEOUT elapses.",
+  "request": {
+    "body": {
+      "model": "gemini-3-flash",
+      "max_tokens": 64,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say hello"
+        }
+      ]
+    }
+  },
+  "upstream": [
+    {
+      "hang": true
+    }
+  ],
+  "expect": {
+    "status": 504,
+    "upstreamCalls": ["/v1internal:generateContent"],
+    "minElapsedMs": 700,
+    "maxElapsedMs": 5000,
+    "body": {
+      "type": "error",
+      "error": {
+        "type": "timeout_error",
+        "message": "$contains:timed out after 800ms"
+      }
+    }
+  }
+}
