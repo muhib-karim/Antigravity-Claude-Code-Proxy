@@ -19,3 +19,10 @@ updates:
       day: monday
     commit-message:
       prefix: ci
+  - package-ecosystem: docker
+    directory: /Antigravity-Claude-Code-Proxy
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: docker
