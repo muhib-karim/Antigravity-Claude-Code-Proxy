@@ -67,6 +67,17 @@ describe('mapError', () => {
         assert.equal(mapError(new AuthError('Token refresh failed')).type, 'authentication_error');
     });
 
+    it('trusts the upstream status over numbers that appear in the message text', () => {
+        const mapped = mapError(new ApiError('API error 400: field limit is 401 characters', 400));
+        assert.equal(mapped.status, 400);
+        assert.equal(mapped.type, 'invalid_request_error');
+        assert.equal(
+            mapError(new ApiError('API error 400: retry 429 times is not allowed', 400), { rateLimitStatus: 429 })
+                .status,
+            400
+        );
+    });
+
     it('maps upstream 400 INVALID_ARGUMENT and extracts its message', () => {
         const body = JSON.stringify({ error: { code: 400, message: 'Invalid schema', status: 'INVALID_ARGUMENT' } });
         const mapped = mapError(new ApiError(`API error 400: ${body}`, 400));

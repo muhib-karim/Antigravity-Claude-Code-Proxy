@@ -91,6 +91,33 @@ describe('createMetricsMiddleware', () => {
         assert.match(text, /req_seconds_count\{method="POST",route="\/v1\/messages"\} 1/);
     });
 
+    it('counts requests the client aborted before the response finished', () => {
+        const r = new Registry();
+        const requests = r.counter('req_total', 'r', ['method', 'route', 'status']);
+        const duration = r.histogram('req_seconds', 'd', ['method', 'route'], [1]);
+        const listeners = {};
+        const res = { statusCode: 200, writableFinished: false, on: (ev, fn) => (listeners[ev] = fn) };
+        createMetricsMiddleware({ requests, duration })(
+            { method: 'POST', route: { path: '/v1/messages' } },
+            res,
+            () => {}
+        );
+        listeners.close();
+        assert.match(r.render(), /req_total\{method="POST",route="\/v1\/messages",status="aborted"\} 1/);
+    });
+
+    it('records a finished request once even though close also fires', () => {
+        const r = new Registry();
+        const requests = r.counter('req_total', 'r', ['method', 'route', 'status']);
+        const duration = r.histogram('req_seconds', 'd', ['method', 'route'], [1]);
+        const listeners = {};
+        const res = { statusCode: 201, writableFinished: true, on: (ev, fn) => (listeners[ev] = fn) };
+        createMetricsMiddleware({ requests, duration })({ method: 'GET', route: { path: '/x' } }, res, () => {});
+        listeners.finish();
+        listeners.close();
+        assert.match(r.render(), /req_total\{method="GET",route="\/x",status="201"\} 1/);
+    });
+
     it('labels unmatched paths as "unmatched" to keep cardinality bounded', () => {
         const r = new Registry();
         const requests = r.counter('req_total', 'r', ['method', 'route', 'status']);

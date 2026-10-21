@@ -61,8 +61,9 @@ describe('createGracefulShutdown', () => {
         assert.deepEqual(exits, [1]);
     });
 
-    it('ignores repeated signals while draining', async () => {
+    it('a second signal while draining forces an immediate exit', async () => {
         const server = fakeServer();
+        server.closeAllConnections = () => server.allClosed++;
         let closes = 0;
         const origClose = server.close;
         server.close = cb => {
@@ -72,16 +73,36 @@ describe('createGracefulShutdown', () => {
         const exits = [];
         const shutdown = createGracefulShutdown({
             getServers: () => [server],
-            timeoutMs: 1000,
+            timeoutMs: 60_000, // only the forced path can finish within the test
             exit: code => exits.push(code),
             log: () => {}
         });
         const first = shutdown.run('SIGTERM');
-        const second = shutdown.run('SIGTERM');
+        await shutdown.run('SIGINT');
+        assert.equal(closes, 1, 'servers are closed once');
+        assert.equal(server.allClosed, 1);
+        assert.deepEqual(exits, [1]);
         server.finish();
-        await Promise.all([first, second]);
-        assert.equal(closes, 1);
-        assert.deepEqual(exits, [0]);
+        await first;
+    });
+
+    it('keeps closing connections that become idle during the drain', async () => {
+        const server = fakeServer();
+        const shutdown = createGracefulShutdown({
+            getServers: () => [server],
+            timeoutMs: 2000,
+            idleSweepMs: 10,
+            exit: () => {},
+            log: () => {}
+        });
+        const done = shutdown.run('SIGTERM');
+        await new Promise(r => setTimeout(r, 60));
+        assert.ok(server.idleClosed >= 3, `idle sweeps: ${server.idleClosed}`);
+        server.finish();
+        await done;
+        const after = server.idleClosed;
+        await new Promise(r => setTimeout(r, 40));
+        assert.equal(server.idleClosed, after, 'sweeping stops after shutdown');
     });
 
     it('runs the onDrained hook before exiting and tolerates servers that are not listening', async () => {

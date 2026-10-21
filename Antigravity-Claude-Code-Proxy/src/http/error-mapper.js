@@ -90,7 +90,7 @@ export function mapError(thrown, options = {}) {
         return result(504, 'timeout_error', message);
     }
 
-    if (statusCode === 429 || isRateLimitError(error)) {
+    if (statusCode === 429 || (statusCode === null && isRateLimitError(error))) {
         const resetMatch = /quota will reset after (\d+h\d+m\d+s|\d+m\d+s|\d+s)/i.exec(message);
         const retryAfterMs =
             error.retryAfterMs ?? error.resetMs ?? (resetMatch ? parseDurationMs(resetMatch[1]) : null);
@@ -104,7 +104,8 @@ export function mapError(thrown, options = {}) {
             : result(400, 'invalid_request_error', text, toSeconds(retryAfterMs));
     }
 
-    if (statusCode === 401 || isAuthError(error) || /\b401\b|UNAUTHENTICATED/.test(message)) {
+    // Text matching is only a fallback for errors that carry no upstream status
+    if (statusCode === 401 || isAuthError(error) || (statusCode === null && /\b401\b|UNAUTHENTICATED/.test(message))) {
         return result(
             401,
             'authentication_error',

@@ -228,11 +228,20 @@ export class Registry {
 export function createMetricsMiddleware({ requests, duration }) {
     return (req, res, next) => {
         const start = process.hrtime.bigint();
-        res.on('finish', () => {
+        let recorded = false;
+        /** @param {string | number} status */
+        const record = status => {
+            if (recorded) return;
+            recorded = true;
             const route = req.route?.path ? `${req.baseUrl || ''}${req.route.path}` : 'unmatched';
             const seconds = Number(process.hrtime.bigint() - start) / 1e9;
-            requests.inc({ method: req.method, route, status: res.statusCode });
+            requests.inc({ method: req.method, route, status });
             duration.observe({ method: req.method, route }, seconds);
+        };
+        res.on('finish', () => record(res.statusCode));
+        // The client went away before the response completed (e.g. a cancelled stream)
+        res.on('close', () => {
+            if (!res.writableFinished) record('aborted');
         });
         next();
     };
