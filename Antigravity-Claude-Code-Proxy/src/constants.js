@@ -126,7 +126,7 @@ export const MAX_ACCOUNTS = getEnvInt('MAX_ACCOUNTS', 10); // Maximum number of 
 // Request timeout (new)
 export const REQUEST_TIMEOUT_MS = getEnvInt('REQUEST_TIMEOUT', 60000); // 60 seconds default
 
-// Upstream resilience: retries for 5xx/network/timeout errors (per account), exponential backoff with jitter
+// Upstream resilience: retries for 5xx/network/timeout errors (per request), exponential backoff with jitter
 export const UPSTREAM_RETRIES = getEnvInt('UPSTREAM_RETRIES', 2);
 export const RETRY_BASE_MS = getEnvInt('RETRY_BASE_MS', 500);
 export const RETRY_MAX_MS = getEnvInt('RETRY_MAX_MS', 8000);

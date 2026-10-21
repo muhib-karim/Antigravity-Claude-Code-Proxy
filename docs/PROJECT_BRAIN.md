@@ -18,9 +18,10 @@ metrics/health, graceful shutdown, 30-fixture conformance suite, coverage gate, 
 CI (quality, matrix, gitleaks, audit, CodeQL, Dependabot) committed. 192 offline tests green.
 
 ## Next step
-Push, get CI + CodeQL green with 0 alerts; README provenance section + NOTICE. Then slice 2
+Act on the slice-1 code review, re-run CI. Then slice 2
 (Docker, README refresh, CHANGELOG/version, SKILLS_USED/TASKS/HANDOFF).
 
 ## Session log
 - 2026-10-21 20:05Z claude-code/opus-5.5: created brain + slice-1 plan; next: tooling baseline
 - 2026-10-21 21:10Z claude-code/opus-5.5: slice-1 code + CI committed (192 tests, cov 82.5%); next: push, CodeQL, provenance
+- 2026-10-21 21:30Z claude-code/opus-5.5: pushed d0405e7; CI run 39670059079 green (5 jobs), CodeQL 0 open (6 clear-text-logging fixed); provenance+NOTICE done; next: review fixes
