@@ -386,6 +386,16 @@ See [SECURITY.md](SECURITY.md) for the full policy and how to report a vulnerabi
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 
+## Tech stack
+
+- **Language:** JavaScript
+- **Frameworks and tools:** Express, TypeScript, SQLite
+- **CI:** GitHub Actions
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep each pull request focused and say how you tested it.
+
 ## License
 
 MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Built on [antigravity-claude-proxy](https://github.com/badrisnarayanan/antigravity-claude-proxy) by Badri Narayanan S, used under the MIT License. The original copyright notice is kept in the license.
