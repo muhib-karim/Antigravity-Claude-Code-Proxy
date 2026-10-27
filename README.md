@@ -10,7 +10,7 @@
   <a href="Antigravity-Claude-Code-Proxy/.c8rc.json"><img src="https://img.shields.io/badge/coverage-%E2%89%A580%25%20gated%20(c8)-brightgreen" alt="Coverage: at least 80% lines, statements, functions and branches, enforced by c8 in CI"></a>
   <a href="https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/releases/latest"><img src="https://img.shields.io/github/v/release/muhib-karim/Antigravity-Claude-Code-Proxy?sort=semver" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/muhib-karim/Antigravity-Claude-Code-Proxy" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/node-20%20%7C%2022-339933?logo=node.js&amp;logoColor=white" alt="Node.js 20 and 22">
+  <img src="https://img.shields.io/badge/node-22%20%7C%2024-339933?logo=node.js&amp;logoColor=white" alt="Node.js 22 and 24">
   <a href="Antigravity-Claude-Code-Proxy/Dockerfile"><img src="https://img.shields.io/badge/docker-non--root%20image-2496ED?logo=docker&amp;logoColor=white" alt="Docker image (non-root)"></a>
   <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status"><img src="https://img.shields.io/open-vsx/v/ai-dev-2024/claude-proxy-status?label=Open%20VSX" alt="Status bar extension on Open VSX"></a>
 </p>
@@ -48,7 +48,7 @@ Antigravity Claude Code Proxy is a local Node.js/Express gateway. It speaks the 
 - **Verified offline**: a 37-fixture Anthropic conformance suite plus unit and integration tests (222 in total) run against a mock upstream on every push.
 - **Status bar extension** for VS Code-based editors, [published on Open VSX](https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status). It shows the active model and quotas and allows one-click switching.
 
-> **Verification scope.** CI runs lint, format and type checks, the offline suites under an 80% coverage gate on Node 20 and 22 against mocked upstreams, a Docker build and smoke run, CodeQL, secret scanning and a runtime dependency audit. Those checks do not establish current access to every remote model or account. Provider names and model identifiers can change; verify the configured provider before relying on it.
+> **Verification scope.** CI runs lint, format and type checks, the offline suites under an 80% coverage gate on Node 22 and 24 against mocked upstreams, a Docker build and smoke run, CodeQL, secret scanning and a runtime dependency audit. Those checks do not establish current access to every remote model or account. Provider names and model identifiers can change; verify the configured provider before relying on it.
 >
 > The gateway runs locally, but prompts and code sent for inference are forwarded to the configured provider. Account credentials, OAuth setup and provider quotas are your responsibility. Do not publish credentials, logs with tokens, or real account screenshots in a public issue. A static showcase or mocked test is not a live-provider benchmark.
 
@@ -102,11 +102,11 @@ Everything below was added in this repository on top of that base (`C` = commit,
 | Hardening | Request validation with one clear 400, JSON errors for malformed/oversized bodies (413), routing-header allow-list, client credentials never forwarded upstream, secret redaction for console and log file, helmet-style headers, per-client rate limit, linear-time model-switch regexes (ReDoS), no API-key fragments in logs | [`src/http/validation.js`](Antigravity-Claude-Code-Proxy/src/http/validation.js), [`src/utils/redact.js`](Antigravity-Claude-Code-Proxy/src/utils/redact.js), [`src/http/security.js`](Antigravity-Claude-Code-Proxy/src/http/security.js), [C a091d61](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/a091d61) |
 | Operability | `/livez`, `/readyz`, `/metrics` (Prometheus text: requests, latency, upstream retries, account states) | [`src/http/metrics.js`](Antigravity-Claude-Code-Proxy/src/http/metrics.js), [C 7890434](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/7890434) |
 | Tests | Unit tests for backoff, error mapping, redaction, validation, metrics, shutdown, account cooldown/rotation and schema cleaning; integration tests for redaction, probes, rate limiting, shutdown and management endpoints (192 offline tests in total) | [`test/unit/`](Antigravity-Claude-Code-Proxy/test/unit/), [`test/integration/`](Antigravity-Claude-Code-Proxy/test/integration/) |
-| Quality gates | `// @ts-check` + `tsc --noEmit`, ESLint and Prettier checks, c8 coverage gate (80% lines) on the core request path, CodeQL, Dependabot, CI on Node 20 and 22 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml), [`.c8rc.json`](Antigravity-Claude-Code-Proxy/.c8rc.json), [C 1e573dd](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/1e573dd) |
+| Quality gates | `// @ts-check` + `tsc --noEmit`, ESLint and Prettier checks, c8 coverage gate (80% lines) on the core request path, CodeQL, Dependabot, CI on Node 22 and 24 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml), [`.c8rc.json`](Antigravity-Claude-Code-Proxy/.c8rc.json), [C 1e573dd](https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy/commit/1e573dd) |
 
 ## Quick start
 
-**Requirements:** Node.js 20+ (CI tests on Node 20 and 22), and the [Claude Code CLI](https://www.npmjs.com/package/@anthropic-ai/claude-code). [PM2](https://pm2.keymetrics.io/) is optional, for running the proxy in the background.
+**Requirements:** Node.js 22.13+ (CI tests on Node 22 and 24), and the [Claude Code CLI](https://www.npmjs.com/package/@anthropic-ai/claude-code). [PM2](https://pm2.keymetrics.io/) is optional, for running the proxy in the background.
 
 ```bash
 git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git

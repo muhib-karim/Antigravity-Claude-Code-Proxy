@@ -35,6 +35,17 @@ export function parseDurationMs(text) {
 }
 
 /**
+ * Coerce a status into one Express 5's `res.status()` accepts (an integer from 100 to 999);
+ * anything else (undefined, NaN, '429', 4.5) becomes `fallback`.
+ * @param {unknown} status
+ * @param {number} [fallback=500]
+ * @returns {number}
+ */
+export function toHttpStatus(status, fallback = 500) {
+    return typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 999 ? status : fallback;
+}
+
+/**
  * @param {number|null|undefined} ms
  * @returns {number|null}
  */
@@ -74,7 +85,9 @@ export function mapError(thrown, options = {}) {
     /** @type {any} */
     const error = thrown instanceof Error ? thrown : new Error(String(thrown ?? 'Unknown error'));
     const message = String(error.message || 'Unknown error');
-    const statusCode = typeof error.statusCode === 'number' ? error.statusCode : null;
+    // Only well-formed integer codes count; a numeric string from an upstream body is accepted too
+    const rawStatus = typeof error.statusCode === 'string' ? Number(error.statusCode) : error.statusCode;
+    const statusCode = toHttpStatus(rawStatus, 0) || null;
 
     // express.json() / body-parser failures
     if (error.type === 'entity.parse.failed') {

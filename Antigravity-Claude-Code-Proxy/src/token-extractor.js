@@ -107,7 +107,8 @@ async function extractChatParams() {
         if (error.code === 'ECONNREFUSED') {
             throw new Error(
                 `Cannot connect to Antigravity on port ${ANTIGRAVITY_AUTH_PORT}. ` +
-                'Make sure Antigravity is running.'
+                'Make sure Antigravity is running.',
+                { cause: error }
             );
         }
         throw error;

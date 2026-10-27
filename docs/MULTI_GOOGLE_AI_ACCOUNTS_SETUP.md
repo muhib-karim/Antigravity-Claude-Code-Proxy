@@ -16,7 +16,7 @@ Claude Code CLI → Antigravity Claude Proxy → Multiple Google AI Accounts
 
 ## Prerequisites
 
-1. **Node.js 18 or later** installed on your system
+1. **Node.js 22.13 or later** installed on your system
 2. **Multiple Google AI accounts** with available quota
 3. **Claude Code CLI** installed
 

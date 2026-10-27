@@ -117,11 +117,11 @@ footer p{margin:4px 0}
 <div class="card"><b>Live dashboard</b><p>Accounts, usage and one-click model switching at <code>localhost:8080/dashboard</code>.</p></div>
 <div class="card"><b>IDE status bar</b><p>Current model and quotas with reset times, right in VS Code or Antigravity.</p></div>
 <div class="card"><b>Agentic fallback</b><p>Chat-only models switch to an agentic model automatically when tools are needed.</p></div>
-<div class="card"><b>Runs anywhere</b><p>Node.js 20+ or a non-root Docker image with a healthcheck, probes and Prometheus metrics.</p></div>
+<div class="card"><b>Runs anywhere</b><p>Node.js 22.13+ or a non-root Docker image with a healthcheck, probes and Prometheus metrics.</p></div>
 </div>
 
 <h2 id="verified">What v2.11.0 verifies</h2>
-<p>Every claim below is checked in CI on Node 20 and 22 against a scripted mock upstream with synthetic fixtures. No provider accounts, keys or network access are involved, so these checks show protocol behaviour, not live model access.</p>
+<p>Every claim below is checked in CI on Node 22 and 24 against a scripted mock upstream with synthetic fixtures. No provider accounts, keys or network access are involved, so these checks show protocol behaviour, not live model access.</p>
 <div class="tablewrap">
 <table class="proof">
 <thead><tr><th scope="col">Area</th><th scope="col">What is checked</th><th scope="col">Evidence</th></tr></thead>
@@ -143,7 +143,7 @@ footer p{margin:4px 0}
 </div>
 
 <h2 id="quick-start">Quick start</h2>
-<h3>With Node.js 20+</h3>
+<h3>With Node.js 22.13+</h3>
 <pre><code>git clone https://github.com/muhib-karim/Antigravity-Claude-Code-Proxy.git
 cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
 npm install
