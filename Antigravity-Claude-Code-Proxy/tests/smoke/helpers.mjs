@@ -130,9 +130,10 @@ export async function startMockUpstream(replyText = 'Hello from the mock upstrea
  * @param {Object<string, string>} [options.stateFiles] - Files pre-seeded into the state dir (name -> content)
  * @param {Object<string, string>} [options.homeFiles] - Files pre-seeded into the temp HOME (relative path -> content)
  * @param {Object<string, string>} [options.env] - Extra environment variables for the proxy process
+ * @param {string} [options.packageRoot] - Directory to run `src/index.js` from (defaults to this package)
  * @returns {Promise<{baseUrl: string, home: string, stateDir: string, child: import('node:child_process').ChildProcess, exited: Promise<number|null>, logs: () => string, stop: () => Promise<void>}>}
  */
-export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, homeFiles = {}, env: extraEnv = {} } = {}) {
+export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, homeFiles = {}, env: extraEnv = {}, packageRoot = PACKAGE_ROOT } = {}) {
     const tmp = mkdtempSync(join(tmpdir(), 'ag-proxy-test-'));
     const home = join(tmp, 'home');
     const stateDir = join(tmp, 'state');
@@ -171,7 +172,7 @@ export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, 
     delete env.FORCE_COLOR;
 
     const child = spawn(process.execPath, ['src/index.js'], {
-        cwd: PACKAGE_ROOT,
+        cwd: packageRoot,
         env,
         stdio: ['ignore', 'pipe', 'pipe']
     });

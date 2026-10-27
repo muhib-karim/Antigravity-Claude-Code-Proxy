@@ -2,13 +2,15 @@
  * Integration tests for behaviour that changed with Express 5 (path-to-regexp v8, body-parser 2,
  * req.body/req.query semantics, async error forwarding, express.static dotfiles): the 404 catch-all,
  * body-parser errors, management routes hit without a JSON body, query parsing, the dashboard and
- * security headers. The real proxy process runs against the mock upstream in a temp home.
+ * security headers. The real proxy process runs against the mock upstream in a temp home; static
+ * file and dashboard serving is also checked from a copy of the package installed under a hidden
+ * directory.
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, cpSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -20,6 +22,17 @@ import {
 } from '../../tests/smoke/helpers.mjs';
 
 const account = { email: 'mock-account', source: 'manual', apiKey: FAKE_ACCESS_TOKEN, projectId: FAKE_PROJECT_ID };
+
+/**
+ * Copy the runnable parts of the package (src/, package.json) to `dir`, linking node_modules.
+ * @param {string} dir
+ */
+function copyPackage(dir) {
+    mkdirSync(dir, { recursive: true });
+    cpSync(join(PACKAGE_ROOT, 'src'), join(dir, 'src'), { recursive: true });
+    cpSync(join(PACKAGE_ROOT, 'package.json'), join(dir, 'package.json'));
+    symlinkSync(join(PACKAGE_ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
+}
 
 const message = { model: 'gemini-3-flash', max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] };
 
@@ -75,11 +88,6 @@ describe('Express 5 routing and body handling', () => {
                 assert.equal(body.error.message, `Endpoint ${method} ${path} not found`);
             });
         }
-
-        it('does not serve dotfiles from the static directory', async () => {
-            const res = await fetch(`${proxy.baseUrl}/.env`);
-            await assertJsonError(res, 404, 'not_found_error');
-        });
     });
 
     describe('body-parser errors', () => {
@@ -237,12 +245,63 @@ describe('Express 5 routing and body handling', () => {
     });
 });
 
+describe('static files and dashboard from a package under a hidden directory', () => {
+    let tmp;
+    let proxy;
+
+    before(async () => {
+        tmp = mkdtempSync(join(tmpdir(), 'ag-proxy-hidden-'));
+        // e.g. ~/.nvm/versions/node/<v>/lib/node_modules/<pkg>
+        const packageRoot = join(tmp, '.hidden', 'pkg');
+        copyPackage(packageRoot);
+        writeFileSync(join(packageRoot, 'src', 'public', '.secret'), 'not for clients');
+        writeFileSync(join(packageRoot, 'src', 'public', 'plain.txt'), 'public file');
+        proxy = await startProxy({ accounts: [account], packageRoot });
+    });
+    after(async () => {
+        await proxy?.stop();
+        if (tmp) rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('serves a normal static file', async () => {
+        const res = await fetch(`${proxy.baseUrl}/plain.txt`);
+        assert.equal(res.status, 200);
+        assert.equal(await res.text(), 'public file');
+    });
+
+    it('does not serve a dotfile that exists in the static directory', async () => {
+        const res = await fetch(`${proxy.baseUrl}/.secret`);
+        const body = await assertJsonError(res, 404, 'not_found_error');
+        assert.equal(body.error.message, 'Endpoint GET /.secret not found');
+    });
+
+    it('serves the dashboard at /dashboard and /dashboard.html', async () => {
+        for (const path of ['/dashboard', '/dashboard.html']) {
+            const res = await fetch(`${proxy.baseUrl}${path}`);
+            assert.equal(res.status, 200, path);
+            assert.match(res.headers.get('content-type'), /^text\/html/, path);
+            assert.match(await res.text(), /<html/i, path);
+        }
+    });
+});
+
 describe('Express 5 async error forwarding (in-process)', () => {
     let tmp;
     let app;
     let server;
     let baseUrl;
     let loginService;
+    let originalIsActive;
+    const envKeys = [
+        'HOME',
+        'USERPROFILE',
+        'HOST',
+        'ACCOUNT_CONFIG_PATH',
+        'PERPLEXITY_CONFIG_PATH',
+        'PROXY_STATE_DIR',
+        'CLOUDCODE_ENDPOINTS'
+    ];
+    const savedEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 
     before(async () => {
         tmp = mkdtempSync(join(tmpdir(), 'ag-proxy-express5-'));
@@ -261,6 +320,7 @@ describe('Express 5 async error forwarding (in-process)', () => {
         const { getLoginService } = await import('../../src/perplexity-browser-login.js');
         // Same module instance as the server, so the route sees this service
         loginService = getLoginService({});
+        originalIsActive = loginService.isActive;
         await new Promise((resolve, reject) => {
             server = app.listen(0, '127.0.0.1', error => (error ? reject(error) : resolve()));
         });
@@ -268,13 +328,21 @@ describe('Express 5 async error forwarding (in-process)', () => {
     });
     after(async () => {
         await new Promise(resolve => (server ? server.close(() => resolve()) : resolve()));
-        rmSync(tmp, { recursive: true, force: true });
+        if (loginService) loginService.isActive = originalIsActive;
+        for (const [key, value] of Object.entries(savedEnv)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+        if (tmp) rmSync(tmp, { recursive: true, force: true });
     });
 
-    it('a rejected async route handler becomes an Anthropic JSON error, not an HTML page', async () => {
+    it('a rejected async route handler becomes an Anthropic JSON error, not an HTML page', async t => {
         loginService.isActive = () => {
             throw new Error('login state unavailable');
         };
+        t.after(() => {
+            loginService.isActive = originalIsActive;
+        });
         const res = await fetch(`${baseUrl}/perplexity-login/status`);
         const body = await assertJsonError(res, 500, 'api_error');
         assert.equal(body.error.message, 'login state unavailable');
@@ -322,8 +390,11 @@ describe('startup on a busy port', () => {
             child.stdout.on('data', d => (output += d));
             child.stderr.on('data', d => (output += d));
             const timer = setTimeout(() => child.kill('SIGKILL'), 10000);
-            const code = await new Promise(resolve => child.once('exit', resolve));
-            clearTimeout(timer);
+            // 'close' fires after stdout/stderr are drained; 'error' covers a failed spawn
+            const code = await new Promise((resolve, reject) => {
+                child.once('error', reject);
+                child.once('close', resolve);
+            }).finally(() => clearTimeout(timer));
             assert.equal(code, 1, output);
             assert.match(output, /Could not listen on 127\.0\.0\.1:\d+: .*EADDRINUSE/);
             assert.doesNotMatch(output, /Server running at/);
