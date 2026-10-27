@@ -18,7 +18,7 @@ import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
 import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, resolveModelAlias } from './constants.js';
 import { rateLimit } from 'express-rate-limit';
-import { mapError } from './http/error-mapper.js';
+import { mapError, toHttpStatus } from './http/error-mapper.js';
 import { validateMessagesRequest, validateRoutingHeaders } from './http/validation.js';
 import { securityHeaders } from './http/security.js';
 import { detectModelSwitch } from './http/model-switch.js';
@@ -481,7 +481,8 @@ app.use(express.static(join(__dirname, 'public')));
 
 // Dashboard redirect
 app.get('/dashboard', (req, res) => {
-    res.sendFile(join(__dirname, 'public', 'dashboard.html'));
+    // Pass a root so a hidden directory in the install path (e.g. ~/.nvm) is not treated as a dotfile
+    res.sendFile('dashboard.html', { root: join(__dirname, 'public') });
 });
 
 // Restart endpoint - restarts the proxy server
@@ -512,7 +513,7 @@ app.get('/active-model', (req, res) => {
 
 // Set active model (global override)
 app.post('/active-model', (req, res) => {
-    const { model } = req.body;
+    const { model } = req.body ?? {};
     if (!model) {
         return res.status(400).json({ error: 'model is required' });
     }
@@ -564,7 +565,7 @@ app.get('/session-model/:sessionId', (req, res) => {
 
 // Set model for a session
 app.post('/session-model', (req, res) => {
-    const { sessionId, model, name } = req.body;
+    const { sessionId, model, name } = req.body ?? {};
     if (!model) {
         return res.status(400).json({ error: 'model is required' });
     }
@@ -621,7 +622,7 @@ app.get('/perplexity-sessions', async (req, res) => {
 app.post('/perplexity-sessions', async (req, res) => {
     try {
         await ensureInitialized();
-        const { email, sessionToken } = req.body;
+        const { email, sessionToken } = req.body ?? {};
 
         if (!email || !sessionToken) {
             return res.status(400).json({ error: 'email and sessionToken are required' });
@@ -652,7 +653,7 @@ app.delete('/perplexity-sessions/:email', async (req, res) => {
 app.patch('/perplexity-sessions/:email', async (req, res) => {
     try {
         await ensureInitialized();
-        const { newName } = req.body;
+        const { newName } = req.body ?? {};
         if (!newName) {
             return res.status(400).json({ error: 'newName is required' });
         }
@@ -856,7 +857,7 @@ function sendError(res, error, override = {}) {
         return;
     }
     if (mapped.retryAfterSeconds) res.setHeader('retry-after', String(mapped.retryAfterSeconds));
-    res.status(mapped.status).json(payload);
+    res.status(toHttpStatus(mapped.status)).json(payload);
 }
 
 // Request logging middleware
@@ -1673,9 +1674,9 @@ app.post('/v1/messages', async (req, res) => {
 });
 
 /**
- * Catch-all for unsupported endpoints
+ * Catch-all for unsupported endpoints (path-less, so it matches every method and path)
  */
-app.use('*', (req, res) => {
+app.use((req, res) => {
     res.status(404).json({
         type: 'error',
         error: {

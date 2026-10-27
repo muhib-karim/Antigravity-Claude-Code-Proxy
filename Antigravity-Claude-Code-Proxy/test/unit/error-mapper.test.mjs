@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapError, parseDurationMs } from '../../src/http/error-mapper.js';
+import { mapError, parseDurationMs, toHttpStatus } from '../../src/http/error-mapper.js';
 import { ApiError, RateLimitError, AuthError, TimeoutError, RequestValidationError } from '../../src/errors.js';
 
 describe('mapError', () => {
@@ -134,5 +134,36 @@ describe('parseDurationMs', () => {
     it('returns null for anything else', () => {
         assert.equal(parseDurationMs('soon'), null);
         assert.equal(parseDurationMs(''), null);
+    });
+});
+
+describe('toHttpStatus', () => {
+    it('keeps integer codes Express 5 accepts', () => {
+        assert.equal(toHttpStatus(404), 404);
+        assert.equal(toHttpStatus(100), 100);
+        assert.equal(toHttpStatus(999), 999);
+    });
+
+    it('falls back for values res.status() would throw on', () => {
+        for (const bad of [undefined, null, NaN, '429', 4.5, 99, 1000, Infinity]) {
+            assert.equal(toHttpStatus(bad), 500, String(bad));
+        }
+        assert.equal(toHttpStatus(undefined, 502), 502);
+    });
+});
+
+describe('mapError with malformed upstream status codes', () => {
+    it('accepts a numeric string status', () => {
+        const mapped = mapError(Object.assign(new Error('not here'), { statusCode: '404' }));
+        assert.equal(mapped.status, 404);
+        assert.equal(mapped.type, 'not_found_error');
+    });
+
+    it('ignores non-integer or out-of-range codes and always yields a sendable status', () => {
+        for (const statusCode of [404.5, NaN, 1500, 42, 'teapot', '']) {
+            const mapped = mapError(Object.assign(new Error('boom'), { statusCode }));
+            assert.equal(mapped.status, 500, String(statusCode));
+            assert.equal(mapped.type, 'api_error');
+        }
     });
 });

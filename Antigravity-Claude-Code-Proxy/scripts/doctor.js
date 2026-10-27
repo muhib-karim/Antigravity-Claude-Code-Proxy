@@ -67,12 +67,13 @@ function section(title) {
 function checkNodeVersion() {
     section('Node.js');
     const version = process.version;
-    const major = parseInt(version.slice(1).split('.')[0], 10);
+    const [major, minor] = version.slice(1).split('.').map(n => parseInt(n, 10));
 
-    if (major >= 18) {
-        pass(`Node.js ${version} (>=18 required)`);
+    // Matches engines.node in package.json (better-sqlite3 and ESLint need 22.13+)
+    if (major > 22 || (major === 22 && minor >= 13)) {
+        pass(`Node.js ${version} (>=22.13 required)`);
     } else {
-        fail(`Node.js ${version} - version 18 or higher required`, 'Upgrade Node.js: https://nodejs.org/');
+        fail(`Node.js ${version} - version 22.13 or higher required`, 'Upgrade Node.js: https://nodejs.org/');
     }
 }
 

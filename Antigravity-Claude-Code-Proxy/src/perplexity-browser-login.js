@@ -101,7 +101,7 @@ export class PerplexityBrowserLogin {
      * Capture session and save account
      */
     async captureSession(page, sessionToken) {
-        let email = 'perplexity_user@local';
+        let email;
 
         try {
             // Wait for page to load fully

@@ -15,6 +15,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 # Version 2.x — Extension + Proxy
 
+## [Unreleased]
+
+### Changed
+- **Node.js 22.13+ is required** (`engines.node: >=22.13.0`). Node 20 is end-of-life, better-sqlite3 13 needs Node 22 and ESLint 10 needs 22.13. CI tests on Node 22 and 24; `npm run doctor` checks for 22.13+.
+- Dependencies: Express 5 (from 4), better-sqlite3 13, ESLint 10 with `@eslint/js` 10, c8 12, Prettier 3.9.10.
+
+### Fixed
+- Express 5 migration: the 404 catch-all is a path-less handler (Express 5 rejects `'*'` routes), management routes answer their normal 400 instead of a 500 when a request has no JSON body, error responses never pass an invalid status to `res.status()`, the dashboard is served when the package lives under a hidden directory (e.g. `~/.nvm`), and startup exits with code 1 when the port is already in use instead of reporting that the server is running.
+
 ## [2.11.0] - 2026-10-21
 
 Conformance, resilience and hardening release. Everything is verified offline against a mock upstream; see [RELEASE_NOTES_v2.11.0.md](RELEASE_NOTES_v2.11.0.md).

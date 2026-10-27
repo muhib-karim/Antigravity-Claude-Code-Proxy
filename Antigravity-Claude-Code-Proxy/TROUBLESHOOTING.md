@@ -11,7 +11,7 @@ npm run doctor
 ```
 
 This checks:
-- Node.js version (requires 18+)
+- Node.js version (requires 22.13+)
 - Dependencies installed
 - Environment configuration
 - Account configuration

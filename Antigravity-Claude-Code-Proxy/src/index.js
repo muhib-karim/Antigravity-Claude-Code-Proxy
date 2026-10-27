@@ -63,7 +63,12 @@ if (HOST === '127.0.0.1') {
     });
 }
 
-server = app.listen(PORT, HOST, () => {
+// Express 5 hands listen errors (e.g. EADDRINUSE) to this callback instead of throwing them
+server = app.listen(PORT, HOST, (error) => {
+    if (error) {
+        console.error(`[Server] Could not listen on ${HOST}:${PORT}: ${error.message}`);
+        process.exit(1);
+    }
     applyServerTimeouts(server);
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗

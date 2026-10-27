@@ -464,7 +464,7 @@ export class AccountManager {
                     throw new RateLimitError(`Token refresh for ${account.email} could not reach Google: ${error.message}`, TRANSIENT_REFRESH_COOLDOWN_MS, account.email);
                 }
                 this.markInvalid(account.email, error.message);
-                throw new Error(`AUTH_INVALID: ${account.email}: ${error.message}`);
+                throw new Error(`AUTH_INVALID: ${account.email}: ${error.message}`, { cause: error });
             }
         } else if (account.source === 'manual' && account.apiKey) {
             token = account.apiKey;
