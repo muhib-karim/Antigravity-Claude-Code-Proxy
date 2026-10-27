@@ -3,7 +3,14 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { redact, redactString, redactUrlCredentials, installConsoleRedaction } from '../../src/utils/redact.js';
+import {
+    URL_PLACEHOLDER,
+    installConsoleRedaction,
+    redact,
+    redactString,
+    redactUrl,
+    redactUrlCredentials
+} from '../../src/utils/redact.js';
 
 // Key-shaped values are assembled at runtime so no credential-looking literal sits in the source
 // (secret scanners would flag it). These are synthetic and grant access to nothing.
@@ -33,6 +40,48 @@ describe('redactString', () => {
         }
     });
 
+    // The authority ends at the first "/", "?", "#" or "\" (WHATWG; "\" counts as "/" for http(s));
+    // the userinfo is everything up to the last "@" inside it, whatever characters it contains
+    it('masks up to the last "@" of the authority, even with several "@" or quotes in the password', () => {
+        const cases = [
+            ['http://alice:pass@word"tail@host:8000', 'http://***@host:8000'],
+            ['http://a:b@c@d@host:1/x', 'http://***@host:1/x'],
+            ["http://alice:it's@secret@host/p", 'http://***@host/p'],
+            ['http://alice:<pw>@x@host', 'http://***@host'],
+            ['log "http://alice:pass@word"tail@host:8000" end', 'log "http://***@host:8000" end'],
+            ['http://alice:pass@word"tail@host:8000\\a@b', 'http://***@host:8000\\a@b'],
+            ['http:\\\\alice:pass@host/', 'http:\\\\***@host/']
+        ];
+        for (const [input, expected] of cases) {
+            assert.equal(redactUrlCredentials(input), expected);
+            assert.equal(redactString(input), expected);
+            for (const secret of ['alice', 'pass', 'word', 'tail', 'secret', 'pw']) {
+                assert.ok(!redactString(input).includes(secret), `${secret} leaked from ${input}`);
+            }
+        }
+    });
+
+    it('treats a percent-encoded "@" (%40) as part of the userinfo, not as its end', () => {
+        assert.equal(redactUrlCredentials('http://alice:p%40ss@host/'), 'http://***@host/');
+        assert.equal(redactUrlCredentials('http://alice%40corp:pw@host'), 'http://***@host');
+        // no real "@": there is no userinfo to mask
+        assert.equal(redactUrlCredentials('http://host%40x/'), 'http://host%40x/');
+    });
+
+    it('never treats an "@" in the path, query or fragment as userinfo', () => {
+        for (const text of [
+            'http://host/a@b',
+            'http://host:8000/users/alice@example.test',
+            'http://host?mail=a@b',
+            'http://host#a@b',
+            'http://host\\a@b',
+            'https://h.test/p?q=1#x@y'
+        ]) {
+            assert.equal(redactUrlCredentials(text), text);
+            assert.equal(redactString(text), text);
+        }
+        assert.equal(redactUrlCredentials('http://u:p@host/a@b?c=d@e#f@g'), 'http://***@host/a@b?c=d@e#f@g');
+    });
     it('masks bearer tokens, Google access/refresh tokens and API keys', () => {
         const input = [
             'Authorization: Bearer abc.def-123',
@@ -83,9 +132,41 @@ describe('redactString', () => {
     });
 });
 
+describe('redactUrl (a single URL value)', () => {
+    it('masks the userinfo of a parseable URL and keeps the rest', () => {
+        assert.equal(
+            redactUrl('http://pplx.internal:8000/v1/chat/completions'),
+            'http://pplx.internal:8000/v1/chat/completions'
+        );
+        assert.equal(redactUrl('http://alice:pass@word"tail@host:8000/v1'), 'http://***@host:8000/v1');
+        assert.equal(redactUrl('http://alice:p%40ss@host/x?y=a@b'), 'http://***@host/x?y=a@b');
+    });
+
+    it('replaces the whole value with a placeholder when it cannot be parsed safely', () => {
+        for (const value of [
+            'not a url',
+            'http://alice:hunter2@pplx.internal:99999',
+            // the URL parser sees credentials that text masking cannot delimit
+            'http://alice:hun ter2@host',
+            'http:alice:hunter2@host',
+            'http:/alice:hunter2@host',
+            ''
+        ]) {
+            assert.equal(redactUrl(value), URL_PLACEHOLDER, value);
+        }
+    });
+});
+
 describe('redactString performance', () => {
     it('stays linear on long unbroken input', () => {
-        for (const text of ['a'.repeat(100_000), 'session'.repeat(20_000), 'eyJ' + 'x'.repeat(100_000)]) {
+        for (const text of [
+            'a'.repeat(100_000),
+            'session'.repeat(20_000),
+            'eyJ' + 'x'.repeat(100_000),
+            'http://' + '@'.repeat(100_000),
+            'a://'.repeat(25_000),
+            'http://' + 'a@'.repeat(50_000) + '/'
+        ]) {
             const started = process.hrtime.bigint();
             redactString(text);
             const ms = Number(process.hrtime.bigint() - started) / 1e6;

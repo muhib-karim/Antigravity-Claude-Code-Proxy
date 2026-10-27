@@ -91,8 +91,9 @@ export function buildUserAgent(version, os = platform(), architecture = arch()) 
 
 /**
  * Validate a base URL setting: http(s) only, without credentials, query string or fragment.
- * Credentials are refused because the URL is logged and shown in error messages (and fetch
- * rejects such URLs anyway); a query or fragment would break the paths appended to it.
+ * Credentials are refused because fetch rejects such URLs and they would end up in logs; a query
+ * or fragment would break the paths appended to it. The warning for a rejected value names the
+ * rule that failed but never repeats the value, so no part of a password can reach a log.
  * @param {string|undefined} value - Raw setting
  * @param {string} name - Setting name for the warning
  * @param {string} fallback - Used when unset or invalid
@@ -102,30 +103,22 @@ export function buildUserAgent(version, os = platform(), architecture = arch()) 
 export function resolveServerUrl(value, name, fallback, warn = console.warn) {
     const trimmed = (value ?? '').trim();
     if (trimmed === '') return fallback;
-    const parsed = URL.canParse(trimmed) ? new URL(trimmed) : null;
     let problem = null;
-    if (!parsed || !/^https?:$/.test(parsed.protocol)) {
-        problem = 'is not an http(s) URL';
+    const parsed = URL.canParse(trimmed) ? new URL(trimmed) : null;
+    if (!parsed) {
+        problem = 'it cannot be parsed as a URL';
+    } else if (!/^https?:$/.test(parsed.protocol)) {
+        problem = 'it is not an http(s) URL';
     } else if (parsed.username || parsed.password) {
-        problem = 'must not contain credentials (user:password@)';
+        problem = 'it has credentials (user:password@)';
     } else if (parsed.search || parsed.hash || /[?#]/.test(trimmed)) {
-        problem = 'must not contain a query string or fragment';
+        problem = 'it has a query string or fragment';
     }
     if (!parsed || problem) {
-        warn(`[Config] ${name} "${maskUserinfo(trimmed)}" ${problem}; using ${fallback}`);
+        warn(`[Config] ${name} rejected: ${problem}; using the default ${fallback} (the value is not shown)`);
         return fallback;
     }
     return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
-}
-
-/**
- * Mask everything between "scheme://" and the last "@" of a (possibly unparseable) URL setting,
- * so a warning never shows a password even when the value is malformed.
- * @param {string} value
- * @returns {string}
- */
-function maskUserinfo(value) {
-    return value.replace(/^([a-z][a-z0-9+.-]*:\/\/)?[^@]*@/i, (_, scheme = '') => `${scheme}***@`);
 }
 
 /**

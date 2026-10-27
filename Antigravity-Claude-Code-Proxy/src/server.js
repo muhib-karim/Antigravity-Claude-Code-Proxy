@@ -25,7 +25,7 @@ import { detectModelSwitch } from './http/model-switch.js';
 import { registry, metricsMiddleware, setAccountCollector } from './http/metrics.js';
 import { RequestValidationError, ApiError, BackendUnavailableError, connectionErrorCode } from './errors.js';
 import { parseRetryAfter } from './resilience/backoff.js';
-import { redactString, redactUrlCredentials } from './utils/redact.js';
+import { redactString, redactUrl } from './utils/redact.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
 import fs from 'fs';
@@ -1498,7 +1498,7 @@ app.post('/v1/messages', async (req, res) => {
                     openaiPayload.messages.unshift({ role: 'system', content: systemText });
                 }
 
-                console.log(`[API] Forwarding to Python server: ${redactUrlCredentials(pythonServerUrl)} (stream: ${stream})`);
+                console.log(`[API] Forwarding to Python server: ${redactUrl(pythonServerUrl)} (stream: ${stream})`);
                 const pythonResponse = await fetch(pythonServerUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

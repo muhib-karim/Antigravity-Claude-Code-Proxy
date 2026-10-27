@@ -17,7 +17,14 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { startProxy, getFreePort, PACKAGE_ROOT, FAKE_PROJECT_ID, NEUTRAL_ENV } from '../../tests/smoke/helpers.mjs';
+import {
+    startProxy,
+    getFreePort,
+    defaultBackendGuardEnv,
+    PACKAGE_ROOT,
+    FAKE_PROJECT_ID,
+    NEUTRAL_ENV
+} from '../../tests/smoke/helpers.mjs';
 import { startScriptedUpstream } from '../helpers/scripted-upstream.mjs';
 import { AccountManager } from '../../src/account-manager.js';
 
@@ -92,11 +99,10 @@ function readWorkflows() {
 }
 
 /**
- * Spawn the proxy with extra node/CLI arguments (startProxy() only runs `node src/index.js`)
- * and wait for /livez, which answers even when the account pool failed to load.
+ * Spawn the proxy with extra node/CLI arguments (startProxy() only runs `node src/index.js`).
  * @param {{nodeArgs?: string[], args?: string[], env?: Record<string, string>, upstreamUrl?: string}} options
  */
-async function spawnProxy({ nodeArgs = [], args = [], env = {}, upstreamUrl = 'http://127.0.0.1:9' }) {
+async function launchProxy({ nodeArgs = [], args = [], env = {}, upstreamUrl = 'http://127.0.0.1:9' }) {
     const tmp = mkdtempSync(join(tmpdir(), 'ag-proxy-plan-'));
     const home = join(tmp, 'home');
     mkdirSync(home);
@@ -116,6 +122,7 @@ async function spawnProxy({ nodeArgs = [], args = [], env = {}, upstreamUrl = 'h
         PROXY_STATE_DIR: join(tmp, 'state'),
         CLOUDCODE_ENDPOINTS: upstreamUrl,
         GOOGLE_OAUTH_CLIENT_SECRET: 'test-client-secret',
+        ...defaultBackendGuardEnv(),
         ...env
     };
     mkdirSync(childEnv.PROXY_STATE_DIR);
@@ -124,13 +131,14 @@ async function spawnProxy({ nodeArgs = [], args = [], env = {}, upstreamUrl = 'h
         env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe']
     });
+    /** @type {Promise<{code: number|null, signal: NodeJS.Signals|null}>} */
+    const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
     let output = '';
     child.stdout.on('data', d => (output += d));
     child.stderr.on('data', d => (output += d));
     const baseUrl = `http://127.0.0.1:${port}`;
     const stop = async () => {
-        if (child.exitCode === null) {
-            const exited = new Promise(resolve => child.once('exit', resolve));
+        if (child.exitCode === null && child.signalCode === null) {
             child.kill('SIGTERM');
             const timer = setTimeout(() => child.kill('SIGKILL'), 5000);
             await exited;
@@ -138,16 +146,52 @@ async function spawnProxy({ nodeArgs = [], args = [], env = {}, upstreamUrl = 'h
         }
         rmSync(tmp, { recursive: true, force: true });
     };
-    for (const deadline = Date.now() + 15000; Date.now() < deadline && child.exitCode === null;) {
+    /** @returns {Promise<boolean>} whether /livez answers */
+    const live = async () => {
         try {
-            if ((await fetch(`${baseUrl}/livez`)).ok) return { baseUrl, tmp, logs: () => output, stop };
+            return (await fetch(`${baseUrl}/livez`)).ok;
         } catch {
-            /* not listening yet */
+            return false;
         }
+    };
+    return { baseUrl, tmp, child, exited, live, logs: () => output, stop };
+}
+
+/**
+ * Spawn the proxy and wait for /livez, which answers even when the account pool failed to load.
+ * @param {Parameters<typeof launchProxy>[0]} options
+ */
+async function spawnProxy(options) {
+    const proxy = await launchProxy(options);
+    for (const deadline = Date.now() + 15000; Date.now() < deadline && proxy.child.exitCode === null;) {
+        if (await proxy.live()) return proxy;
         await sleep(100);
     }
-    await stop();
-    throw new Error(`proxy did not start:\n${output}`);
+    await proxy.stop();
+    throw new Error(`proxy did not start:\n${proxy.logs()}`);
+}
+
+/**
+ * Spawn the proxy for a configuration it must refuse: wait until it exits, or report that it
+ * started serving instead (/livez answered) or neither happened within the timeout.
+ * @param {Parameters<typeof launchProxy>[0]} options
+ * @returns {Promise<{code: number|null, signal: NodeJS.Signals|null, started: boolean, output: string}>}
+ */
+async function runUntilExit(options, timeoutMs = 15000) {
+    const proxy = await launchProxy(options);
+    try {
+        let exit = null;
+        proxy.exited.then(result => (exit = result));
+        for (const deadline = Date.now() + timeoutMs; Date.now() < deadline;) {
+            if (exit) return { ...exit, started: false, output: proxy.logs() };
+            if (await proxy.live()) break;
+            await sleep(100);
+        }
+        // Still running: it accepted the configuration (or hung), which the caller treats as failure
+        return { code: null, signal: null, started: true, output: proxy.logs() };
+    } finally {
+        await proxy.stop();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -549,13 +593,11 @@ describe('v2.12 plan item 2: configurable rotation strategy', () => {
         'rejects an unknown strategy at startup with a clear message',
         { todo: 'v2.12 plan item 2: ROTATION_STRATEGY is not validated' },
         async () => {
-            const proxy = await spawnProxy({ env: { ROTATION_STRATEGY: 'random-ish' } });
-            try {
-                await sleep(200);
-                assert.match(proxy.logs(), /ROTATION_STRATEGY.*round-robin\|least-used\|quota-aware/);
-            } finally {
-                await proxy.stop();
-            }
+            const { code, started, output } = await runUntilExit({ env: { ROTATION_STRATEGY: 'random-ish' } });
+            assert.equal(started, false, `the proxy started with ROTATION_STRATEGY=random-ish:\n${output}`);
+            assert.ok(code !== null && code !== 0, `exit code ${code}:\n${output}`);
+            assert.match(output, /ROTATION_STRATEGY.*random-ish/);
+            assert.match(output, /round-robin.*least-used.*quota-aware/);
         }
     );
 });

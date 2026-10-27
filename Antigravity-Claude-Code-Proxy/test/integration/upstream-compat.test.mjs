@@ -435,38 +435,62 @@ describe('PERPLEXITY_SERVER_URL: base path, query string and fragment', () => {
                     assert.deepEqual(backend.requests, []);
                     assert.match(
                         proxy.logs(),
-                        /PERPLEXITY_SERVER_URL "[^"]+" must not contain a query string or fragment; using http:\/\/localhost:8000/
+                        /PERPLEXITY_SERVER_URL rejected: it has a query string or fragment; using the default http:\/\/localhost:8000 \(the value is not shown\)/
                     );
+                    assertFallbackIntercepted(proxy.logs());
                 }
             );
         });
     }
 });
 
+/**
+ * The rejected setting falls back to the default backend; the spawned proxy's guard refuses
+ * those requests in-process, so the test proves the fallback without contacting it.
+ * @param {string} logs
+ */
+function assertFallbackIntercepted(logs) {
+    const blocked = logs.match(/\[default-backend-guard\] blocked \S+ \S+/g) ?? [];
+    assert.deepEqual(
+        blocked.sort(),
+        [
+            '[default-backend-guard] blocked GET /stats',
+            '[default-backend-guard] blocked POST /v1/chat/completions',
+            '[default-backend-guard] blocked POST /v1/chat/completions'
+        ],
+        logs
+    );
+}
+
 describe('PERPLEXITY_SERVER_URL with credentials never leaks them', () => {
     const PASSWORD = 'hunter2';
 
-    /** @type {Array<{name: string, value: (backendUrl: string) => string, problem: RegExp}>} */
+    /** @type {Array<{name: string, value: (backendUrl: string) => string, problem: string}>} */
     const cases = [
         {
             name: 'a valid URL with user:password',
             value: url => url.replace('http://', `http://alice:${PASSWORD}@`),
-            problem: /must not contain credentials/
+            problem: 'it has credentials (user:password@)'
         },
         {
             name: 'a valid URL with a base path and user:password',
             value: url => `${url.replace('http://', `http://alice:${PASSWORD}@`)}/base`,
-            problem: /must not contain credentials/
+            problem: 'it has credentials (user:password@)'
+        },
+        {
+            name: 'a password with a quote and a second "@" (the first "@" is not the end of the userinfo)',
+            value: url => url.replace('http://', `http://alice:${PASSWORD}@word"tail@`),
+            problem: 'it has credentials (user:password@)'
         },
         {
             name: 'an invalid URL (bad port) with user:password',
             value: () => `http://alice:${PASSWORD}@pplx.invalid:99999`,
-            problem: /is not an http\(s\) URL/
+            problem: 'it cannot be parsed as a URL'
         },
         {
             name: 'a non-http URL with user:password',
             value: () => `ftp://alice:${PASSWORD}@pplx.invalid/`,
-            problem: /is not an http\(s\) URL/
+            problem: 'it is not an http(s) URL'
         }
     ];
 
@@ -484,17 +508,16 @@ describe('PERPLEXITY_SERVER_URL with credentials never leaks them', () => {
                 bodies.push(await stats.text());
 
                 for (const text of [...bodies, proxy.logs()]) {
-                    assert.ok(!text.includes(PASSWORD), `password leaked in:\n${text}`);
-                    assert.ok(!text.includes('alice:'), `username leaked in:\n${text}`);
+                    for (const secret of [PASSWORD, 'alice', 'word"tail', '***@']) {
+                        assert.ok(!text.includes(secret), `"${secret}" leaked in:\n${text}`);
+                    }
                 }
                 assert.deepEqual(backend.requests, [], 'the credential-bearing URL is never used');
-                const warning =
-                    /\[Config\] PERPLEXITY_SERVER_URL "([^"]+)" ([^;]+); using http:\/\/localhost:8000/.exec(
-                        proxy.logs()
-                    );
-                assert.ok(warning, proxy.logs());
-                assert.match(warning[1], /^(?:https?|ftp):\/\/\*\*\*@/);
-                assert.match(warning[2], problem);
+                const warnings = proxy.logs().match(/\[Config\] PERPLEXITY_SERVER_URL .*/g) ?? [];
+                assert.deepEqual(warnings, [
+                    `[Config] PERPLEXITY_SERVER_URL rejected: ${problem}; using the default http://localhost:8000 (the value is not shown)`
+                ]);
+                assertFallbackIntercepted(proxy.logs());
             } finally {
                 await proxy.stop();
                 await backend.close();

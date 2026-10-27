@@ -5,6 +5,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { NEUTRAL_ENV } from '../../tests/smoke/helpers.mjs';
 
 // The defaults asserted below must not depend on the developer's shell or .env, so the settings
@@ -87,7 +88,7 @@ describe('Perplexity backend URL', () => {
         assert.equal(resolveServerUrl('localhost:8000', 'X', 'http://d', log.warn), 'http://d');
         assert.equal(resolveServerUrl('ftp://host', 'X', 'http://d', log.warn), 'http://d');
         assert.equal(log.messages.length, 2);
-        assert.match(log.messages[0], /X/);
+        assert.match(log.messages[0], /^\[Config\] X rejected: /);
     });
 
     it('returns a normalized origin + path', () => {
@@ -101,52 +102,79 @@ describe('Perplexity backend URL', () => {
         assert.deepEqual(log.messages, []);
     });
 
-    for (const bad of [
-        'http://127.0.0.1:8000?token=abc',
-        'http://127.0.0.1:8000/base?x=1',
-        'http://127.0.0.1:8000/#frag',
-        'http://127.0.0.1:8000/base#',
-        'http://127.0.0.1:8000/?'
-    ]) {
-        it(`rejects a query string or fragment: ${bad}`, () => {
+    /**
+     * The exact warning for a rejected value: it names the rule that failed and the default used,
+     * and never repeats the value (not even masked), so nothing of a password can reach a log.
+     * @param {string} problem
+     */
+    const rejection = problem =>
+        `[Config] PERPLEXITY_SERVER_URL rejected: ${problem}; using the default http://d (the value is not shown)`;
+
+    /** @type {Array<[string, string]>} rejected value -> rule reported */
+    const rejected = [
+        ['http://127.0.0.1:8000?token=abc', 'it has a query string or fragment'],
+        ['http://127.0.0.1:8000/base?x=1', 'it has a query string or fragment'],
+        ['http://127.0.0.1:8000/#frag', 'it has a query string or fragment'],
+        ['http://127.0.0.1:8000/base#', 'it has a query string or fragment'],
+        ['http://127.0.0.1:8000/?', 'it has a query string or fragment'],
+        ['http://alice:hunter2@127.0.0.1:8000', 'it has credentials (user:password@)'],
+        ['https://alice:hunter2@pplx.internal/base/', 'it has credentials (user:password@)'],
+        ['http://:hunter2@127.0.0.1:8000', 'it has credentials (user:password@)'],
+        ['http://hunter2@127.0.0.1:8000', 'it has credentials (user:password@)'],
+        // the reported leak: a quote and a second "@" inside the password
+        ['http://alice:pass@word"tail@host:8000', 'it has credentials (user:password@)'],
+        ['http://alice:p%40ss@host:8000', 'it has credentials (user:password@)'],
+        ['http://alice:hun ter2@host', 'it has credentials (user:password@)'],
+        ['ftp://alice:hunter2@pplx.internal', 'it is not an http(s) URL'],
+        ['ftp://host', 'it is not an http(s) URL'],
+        ['localhost:8000', 'it is not an http(s) URL'],
+        ['http://alice:hunter2@pplx.internal:99999', 'it cannot be parsed as a URL'],
+        // parses as a URL with the scheme "alice:"
+        ['alice:hunter2@pplx.internal', 'it is not an http(s) URL'],
+        ['http://alice:hun/ter2@pplx.internal', 'it cannot be parsed as a URL'],
+        ['http://alice:pass@word"tail@host:99999', 'it cannot be parsed as a URL']
+    ];
+
+    for (const [value, problem] of rejected) {
+        it(`rejects a value because ${problem}, without showing it: ${value.replace(/[^/]*@/, '…@')}`, () => {
             const log = recorder();
-            assert.equal(resolveServerUrl(bad, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn), 'http://d');
-            assert.equal(log.messages.length, 1);
-            assert.match(log.messages[0], /PERPLEXITY_SERVER_URL .*query string or fragment; using http:\/\/d/);
+            assert.equal(resolveServerUrl(value, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn), 'http://d');
+            assert.deepEqual(log.messages, [rejection(problem)]);
         });
     }
 
-    for (const withCredentials of [
-        'http://alice:hunter2@127.0.0.1:8000',
-        'https://alice:hunter2@pplx.internal/base/',
-        'http://:hunter2@127.0.0.1:8000',
-        'http://hunter2@127.0.0.1:8000'
-    ]) {
-        it(`rejects credentials without showing them: ${withCredentials.replace(/\/\/.*@/, '//…@')}`, () => {
-            const log = recorder();
-            const resolved = resolveServerUrl(withCredentials, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn);
-            assert.equal(resolved, 'http://d');
-            assert.equal(log.messages.length, 1);
-            assert.ok(!log.messages[0].includes('hunter2'), log.messages[0]);
-            assert.ok(!log.messages[0].includes('alice'), log.messages[0]);
-            assert.match(log.messages[0], /"https?:\/\/\*\*\*@[^"]+" must not contain credentials/);
-        });
-    }
+    it('warns through console.warn by default, without the rejected value', t => {
+        const warn = t.mock.method(console, 'warn', () => {});
+        const value = 'http://alice:pass@word"tail@host:8000';
+        assert.equal(resolveServerUrl(value, 'PERPLEXITY_SERVER_URL', 'http://d'), 'http://d');
+        assert.equal(warn.mock.callCount(), 1);
+        assert.deepEqual(warn.mock.calls[0].arguments, [rejection('it has credentials (user:password@)')]);
+    });
 
-    for (const invalid of [
-        'http://alice:hunter2@pplx.internal:99999',
-        'ftp://alice:hunter2@pplx.internal',
-        'alice:hunter2@pplx.internal',
-        'http://alice:hun/ter2@pplx.internal'
-    ]) {
-        it(`never shows credentials of an invalid value: ${invalid.replace(/hun\/?ter2/, '…')}`, () => {
-            const log = recorder();
-            assert.equal(resolveServerUrl(invalid, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn), 'http://d');
-            assert.equal(log.messages.length, 1);
-            assert.ok(!/hunter2|hun\/ter2|ter2|alice/.test(log.messages[0]), log.messages[0]);
-            assert.match(log.messages[0], /\*\*\*@pplx\.internal/);
-        });
-    }
+    it('prints nothing of a rejected PERPLEXITY_SERVER_URL when the setting is read at startup', () => {
+        // Same shape as the reported leak, with fragments that cannot occur in the warning text
+        const value = 'http://alice:s3cr3t@qq"zz@host:8000';
+        const constants = new URL('../../src/constants.js', import.meta.url).href;
+        const result = spawnSync(
+            process.execPath,
+            [
+                '--input-type=module',
+                '-e',
+                `const c = await import(${JSON.stringify(constants)}); console.log(c.PERPLEXITY_SERVER_URL);`
+            ],
+            { env: { ...process.env, ...NEUTRAL_ENV, PERPLEXITY_SERVER_URL: value }, encoding: 'utf8', timeout: 30_000 }
+        );
+        assert.equal(result.status, 0, result.stderr);
+        const output = `${result.stdout}\n${result.stderr}`;
+        for (const secret of ['alice', 's3cr3t', 'qq', 'zz', '***']) {
+            assert.ok(!output.includes(secret), `"${secret}" printed in:\n${output}`);
+        }
+        assert.match(
+            output,
+            /PERPLEXITY_SERVER_URL rejected: it has credentials \(user:password@\); using the default/
+        );
+        assert.equal(result.stdout.trim().split('\n').at(-1), 'http://localhost:8000');
+    });
 
     it('joins a base and a path with exactly one slash', () => {
         assert.equal(joinUrl('http://h:1', '/stats'), 'http://h:1/stats');
