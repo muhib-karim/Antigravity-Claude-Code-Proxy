@@ -330,7 +330,7 @@ package. Nothing is listening at its address.
    ```
    It must be an `http://` or `https://` base URL; a path is allowed (`http://host:8001/base`), but
    credentials (`user:password@`), a query string or a fragment are not. Such a value is ignored with a
-   warning at startup (credentials shown as `***`) and the default `http://localhost:8000` is used.
+   warning at startup (the rejected value is not shown) and the default `http://localhost:8000` is used.
 3. Check that it answers: `curl http://localhost:8000/stats` (or `GET /perplexity-stats` on the proxy).
 4. If you do not use Perplexity, pick a Gemini or Claude model; they do not need this server.
 
