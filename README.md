@@ -230,6 +230,8 @@ Every setting is an environment variable (or a line in `.env` next to `package.j
 | `AUTO_WAIT_FOR_RATE_LIMIT` / `MAX_WAIT_BEFORE_ERROR` | `true` / `120000` | Wait for short rate limits instead of failing |
 | `MANAGEMENT_RATE_LIMIT` | `300` | Requests per minute per client for everything except the Messages API |
 | `SHUTDOWN_TIMEOUT` | `30000` | How long SIGTERM waits for in-flight requests and streams before closing sockets (exit 1 if it has to) |
+| `ANTIGRAVITY_VERSION` | `2.5.5` | Antigravity client version sent in the `User-Agent` (dotted `x.y.z`; invalid values fall back with a warning). If requests fail with "This version of Antigravity is no longer supported", set it to the version of your installed Antigravity IDE |
+| `PERPLEXITY_SERVER_URL` | `http://localhost:8000` | Base URL of the separate Perplexity backend used by `perplexity-*`/`pplx-*` models. When it is down those requests get a 503 that names this URL; Gemini and Claude models are unaffected |
 | `CLOUDCODE_ENDPOINTS` | Google Cloud Code endpoints | Comma-separated upstream override (the tests point this at a mock server) |
 
 ---
@@ -291,7 +293,7 @@ An interactive version with links to the code behind each step is on the [websit
 - `src/server.js` holds the routes, CORS/Host checks and model routing. The modules in `src/http/` validate requests, set security headers, map errors to Anthropic types and expose metrics.
 - `src/format/` converts Anthropic requests into Google Generative AI `contents`/`parts` and converts responses and SSE streams back. This includes tool calls, thinking signatures (with an in-memory signature cache) and recovery when a tool loop has lost its thinking blocks.
 - `src/cloudcode-client.js` calls the upstream with endpoint fallback and the retry policy in `src/resilience/backoff.js`. `src/account-manager.js` picks the account, refreshes tokens and cools down rate-limited accounts.
-- Perplexity models go through the `perplexity-*` clients. They are served by a separate Python server on `localhost:8000` that is **not part of this repository**, so they are not covered by the tests.
+- Perplexity models go through the `perplexity-*` clients. They are served by a separate Python server (`PERPLEXITY_SERVER_URL`, default `http://localhost:8000`) that is **not part of this repository**; the tests cover only the forwarding to it, against a mock backend.
 
 ---
 

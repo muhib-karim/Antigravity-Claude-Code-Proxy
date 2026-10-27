@@ -23,6 +23,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Express 5 migration: the 404 catch-all is a path-less handler (Express 5 rejects `'*'` routes), management routes answer their normal 400 instead of a 500 when a request has no JSON body, error responses never pass an invalid status to `res.status()`, the dashboard is served when the package lives under a hidden directory (e.g. `~/.nvm`), and startup exits with code 1 when the port is already in use instead of reporting that the server is running.
+- **"This version of Antigravity is no longer supported"** (#2, #3): the proxy sent a stale Antigravity client version (`antigravity/1.11.5`) in the `User-Agent`, which Google's Cloud Code backend now rejects. The default is now `2.5.5`, and `ANTIGRAVITY_VERSION` overrides it. When the upstream still rejects the version, the client gets a `400 invalid_request_error` naming the version that was sent and explaining how to fix it (the hint is also logged once). The rejection is no longer retried, even when it arrives as a 5xx.
+- **Perplexity models answered an opaque `500 fetch failed`** (#1) when the separate Perplexity backend was not running. They now get a `503 api_error` that names the backend URL and the connection error (ECONNREFUSED, ENOTFOUND, ...) and says how to fix it; streaming requests get the same JSON status before any SSE is sent. HTTP errors from the backend are mapped like other upstream errors (429 to a rate-limit error with `retry-after`, 4xx kept, 5xx to `502`) instead of all becoming 500.
+- `/health`, `/readyz` and the `proxy_accounts` gauge reported an account as rate-limited after its cooldown had expired, until the next request selected an account.
+
+### Added
+- `ANTIGRAVITY_VERSION` setting (default `2.5.5`, dotted `x.y.z`; invalid values fall back with a warning).
+- `PERPLEXITY_SERVER_URL` setting (default `http://localhost:8000`) for the Perplexity backend, used for chat completions and `/perplexity-stats`.
+
+### Tests
+- Integration tests for both fixes: the `User-Agent` recorded by the mock upstream (default, override, invalid value), the "no longer supported" rejection (streaming and non-streaming), and a Perplexity backend that is down, failing (500/429/400), dropping a stream, or working.
+- v2.12 plan coverage (`test/integration/v212-plan.test.mjs`): `/metrics` exposition, request counter, latency histogram, retry counter and account gauges; `/health` shape and the 503 when initialisation fails; `/livez` and `/readyz`; cooldown for `Retry-After` after a 429, rotation to another account and recovery. Plan items that are not built yet (upstream error counter, per-account quota gauge and `/health` details, `ROTATION_STRATEGY`, quota-aware selection, `--record`/replay, GHCR multi-arch publish, Windows smoke job) are `todo` tests that encode their acceptance checks.
 
 ## [2.11.0] - 2026-10-21
 

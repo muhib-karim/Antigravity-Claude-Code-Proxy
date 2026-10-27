@@ -16,14 +16,15 @@ import { PerplexitySessionAccountManager } from './perplexity-session-account-ma
 import { getLoginService } from './perplexity-browser-login.js';
 import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
-import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, resolveModelAlias } from './constants.js';
+import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, PERPLEXITY_SERVER_URL, resolveModelAlias } from './constants.js';
 import { rateLimit } from 'express-rate-limit';
 import { mapError, toHttpStatus } from './http/error-mapper.js';
 import { validateMessagesRequest, validateRoutingHeaders } from './http/validation.js';
 import { securityHeaders } from './http/security.js';
 import { detectModelSwitch } from './http/model-switch.js';
 import { registry, metricsMiddleware, setAccountCollector } from './http/metrics.js';
-import { RequestValidationError } from './errors.js';
+import { RequestValidationError, ApiError, BackendUnavailableError, connectionErrorCode } from './errors.js';
+import { parseRetryAfter } from './resilience/backoff.js';
 import { redactString } from './utils/redact.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
@@ -830,7 +831,7 @@ app.get('/model-usage', (req, res) => {
 // Perplexity stats from Python server
 app.get('/perplexity-stats', async (req, res) => {
     try {
-        const pythonStats = await fetch('http://localhost:8000/stats');
+        const pythonStats = await fetch(`${PERPLEXITY_SERVER_URL}/stats`);
         if (pythonStats.ok) {
             const stats = await pythonStats.json();
             res.json(stats);
@@ -1477,9 +1478,9 @@ app.post('/v1/messages', async (req, res) => {
         if (isPerplexityModel) {
             console.log('[API] Routing to Perplexity via Python Server (curl_cffi)');
             try {
-                // Forward to Python server running on port 8000
+                // Forward to the Python server (PERPLEXITY_SERVER_URL, default http://localhost:8000)
                 // The Python server uses curl_cffi for TLS fingerprint impersonation
-                const pythonServerUrl = 'http://localhost:8000/v1/chat/completions';
+                const pythonServerUrl = `${PERPLEXITY_SERVER_URL}/v1/chat/completions`;
 
                 // Convert Anthropic format to OpenAI format for Python server
                 const openaiPayload = {
@@ -1506,7 +1507,12 @@ app.post('/v1/messages', async (req, res) => {
 
                 if (!pythonResponse.ok) {
                     const errorText = await pythonResponse.text();
-                    throw new Error(`Python server error: ${pythonResponse.status} - ${errorText}`);
+                    throw new ApiError(
+                        `Perplexity backend error ${pythonResponse.status}: ${errorText}`,
+                        pythonResponse.status,
+                        'api_error',
+                        parseRetryAfter(pythonResponse.headers.get('retry-after'))
+                    );
                 }
 
                 if (stream) {
@@ -1604,8 +1610,15 @@ app.post('/v1/messages', async (req, res) => {
                     res.json(anthropicResponse);
                 }
             } catch (err) {
-                console.error('[API] Perplexity Error:', err);
-                sendError(res, err);
+                const code = connectionErrorCode(err);
+                if (code) {
+                    const unavailable = new BackendUnavailableError('Perplexity', PERPLEXITY_SERVER_URL, code);
+                    console.error(`[API] ${unavailable.message}`);
+                    sendError(res, unavailable);
+                } else {
+                    console.error('[API] Perplexity Error:', err);
+                    sendError(res, err);
+                }
             }
         } else if (stream) {
             // Handle streaming response. Headers are held back until the upstream produces its

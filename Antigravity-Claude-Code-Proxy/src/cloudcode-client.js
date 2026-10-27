@@ -31,9 +31,10 @@ import {
 } from './format/index.js';
 import { cacheSignature } from './format/signature-cache.js';
 import { formatDuration, sleep, waitWithProgress } from './utils/helpers.js';
-import { isRateLimitError, isAuthError, ApiError, TimeoutError } from './errors.js';
+import { isRateLimitError, isAuthError, isUnsupportedClientVersion, ApiError, TimeoutError } from './errors.js';
 import { parseRetryAfter, retryDelay, isTransientError } from './resilience/backoff.js';
 import { metrics } from './http/metrics.js';
+import { unsupportedVersionHint } from './http/error-mapper.js';
 
 /**
  * Create an AbortController with timeout
@@ -78,6 +79,9 @@ function throwIfClientGone(clientSignal) {
     }
 }
 
+// The "client version rejected" hint is logged once per process
+let versionHintLogged = false;
+
 /**
  * Build the error for a non-2xx upstream response (5xx are retryable, Retry-After is kept).
  * @param {Response} response - Upstream response
@@ -85,12 +89,21 @@ function throwIfClientGone(clientSignal) {
  * @returns {ApiError}
  */
 function upstreamError(response, errorText) {
-    return new ApiError(
+    const error = new ApiError(
         `API error ${response.status}: ${errorText}`,
         response.status,
         'api_error',
         parseRetryAfter(response.headers.get('retry-after'))
     );
+    if (isUnsupportedClientVersion(error)) {
+        // The client version is rejected outright; retrying (even a 5xx) cannot help
+        error.retryable = false;
+        if (!versionHintLogged) {
+            versionHintLogged = true;
+            console.error(`[CloudCode] ${unsupportedVersionHint()}`);
+        }
+    }
+    return error;
 }
 
 /**

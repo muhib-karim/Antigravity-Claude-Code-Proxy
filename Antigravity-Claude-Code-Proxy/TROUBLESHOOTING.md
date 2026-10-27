@@ -282,6 +282,60 @@ npm install
 
 ---
 
+### 9. "This version of Antigravity is no longer supported. Please update/upgrade to receive the latest features!"
+
+**Symptoms:**
+- Every Gemini and Claude request fails with that text (some Antigravity clients show it as the model's reply)
+- The proxy answers `400 invalid_request_error` with a message like
+  `Antigravity rejected this proxy's client version (antigravity/2.5.5) ... Set ANTIGRAVITY_VERSION ...`
+- The log shows the same hint once
+
+**Cause:**
+Google's Cloud Code backend rejects old Antigravity client versions, judged by the version in the
+`User-Agent` the proxy sends (`antigravity/<version> <os>/<arch>`). Proxy releases before this fix sent
+`antigravity/1.11.5`, which is no longer accepted.
+
+**Solutions:**
+
+1. Update the proxy (the default is now `2.5.5`, the stable Antigravity IDE release at the time of the fix).
+2. If Google has moved on again, set the version of your installed Antigravity IDE (Help > About) in `.env`
+   and restart the proxy:
+   ```env
+   ANTIGRAVITY_VERSION=2.6.0
+   ```
+   The value must be dotted numeric `x.y.z`; anything else is ignored with a warning at startup.
+
+---
+
+### 10. Perplexity model returns `{"type":"error","error":{"type":"api_error","message":"fetch failed"}}`
+
+**Symptoms:**
+- `perplexity-*` / `pplx-*` models (for example `pplx-grok`) fail, Gemini and Claude models work
+- Older versions answered HTTP 500 `fetch failed`; the log shows
+  `[API] Forwarding to Python server: http://localhost:8000/v1/chat/completions` followed by
+  `TypeError: fetch failed ... ECONNREFUSED`
+- Current versions answer HTTP 503 `api_error`:
+  `Perplexity backend is not reachable at http://localhost:8000 (ECONNREFUSED). ...`
+
+**Cause:**
+Perplexity models are forwarded to a separate Perplexity backend server, which is not part of this
+package. Nothing is listening at its address.
+
+**Solutions:**
+
+1. Start the Perplexity backend server, then retry.
+2. If it runs elsewhere (another port, host or container), point the proxy at it and restart:
+   ```env
+   PERPLEXITY_SERVER_URL=http://127.0.0.1:8001
+   ```
+3. Check that it answers: `curl http://localhost:8000/stats` (or `GET /perplexity-stats` on the proxy).
+4. If you do not use Perplexity, pick a Gemini or Claude model; they do not need this server.
+
+HTTP errors from the backend keep their meaning: a 429 becomes a rate-limit error (with `retry-after`),
+a 4xx stays a 4xx, and a 5xx becomes `502 api_error`.
+
+---
+
 ## Debug Logging
 
 Enable verbose logging to diagnose issues:
@@ -342,5 +396,7 @@ Expected response:
 | `MAX_RETRIES` | `5` | Max retry attempts |
 | `TOKEN_REFRESH_INTERVAL` | `300000` | Token refresh interval |
 | `RATE_LIMIT_COOLDOWN` | `60000` | Default cooldown period |
+| `ANTIGRAVITY_VERSION` | `2.5.5` | Antigravity client version in the User-Agent (see issue 9) |
+| `PERPLEXITY_SERVER_URL` | `http://localhost:8000` | Perplexity backend base URL (see issue 10) |
 
 See `.env.example` for the complete list.

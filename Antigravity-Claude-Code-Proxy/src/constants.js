@@ -57,15 +57,58 @@ function getAntigravityDbPath() {
     }
 }
 
+// Cloud Code rejects old client versions ("This version of Antigravity is no longer supported")
+// by the version in the User-Agent. Keep this at the current stable Antigravity IDE release.
+export const DEFAULT_ANTIGRAVITY_VERSION = '2.5.5';
+
 /**
- * Generate platform-specific User-Agent string.
+ * Validate an ANTIGRAVITY_VERSION value (dotted numeric x.y.z).
+ * @param {string|undefined} value - Raw setting
+ * @param {(message: string) => void} [warn] - Called once when the value is invalid
+ * @returns {string} The version, or DEFAULT_ANTIGRAVITY_VERSION when unset or invalid
+ */
+export function resolveAntigravityVersion(value, warn = console.warn) {
+    const trimmed = (value ?? '').trim();
+    if (trimmed === '') return DEFAULT_ANTIGRAVITY_VERSION;
+    if (/^\d+\.\d+\.\d+$/.test(trimmed)) return trimmed;
+    warn(
+        `[Config] ANTIGRAVITY_VERSION "${trimmed}" is not a dotted x.y.z version; ` +
+        `using ${DEFAULT_ANTIGRAVITY_VERSION}`
+    );
+    return DEFAULT_ANTIGRAVITY_VERSION;
+}
+
+/**
+ * Build the Antigravity User-Agent.
+ * @param {string} version - Antigravity client version
+ * @param {string} [os] - Platform (defaults to this machine's)
+ * @param {string} [architecture] - CPU architecture (defaults to this machine's)
  * @returns {string} User-Agent in format "antigravity/version os/arch"
  */
-function getPlatformUserAgent() {
-    const os = platform();
-    const architecture = arch();
-    return `antigravity/1.11.5 ${os}/${architecture}`;
+export function buildUserAgent(version, os = platform(), architecture = arch()) {
+    return `antigravity/${version} ${os}/${architecture}`;
 }
+
+/**
+ * Validate a base URL setting: http(s) only, trailing slashes removed.
+ * @param {string|undefined} value - Raw setting
+ * @param {string} name - Setting name for the warning
+ * @param {string} fallback - Used when unset or invalid
+ * @param {(message: string) => void} [warn] - Called when the value is invalid
+ * @returns {string}
+ */
+export function resolveServerUrl(value, name, fallback, warn = console.warn) {
+    const trimmed = (value ?? '').trim();
+    if (trimmed === '') return fallback;
+    if (URL.canParse(trimmed) && /^https?:$/.test(new URL(trimmed).protocol)) {
+        return trimmed.replace(/\/+$/, '');
+    }
+    warn(`[Config] ${name} "${trimmed}" is not an http(s) URL; using ${fallback}`);
+    return fallback;
+}
+
+// Antigravity client version sent in the User-Agent (ANTIGRAVITY_VERSION overrides it)
+export const ANTIGRAVITY_VERSION = resolveAntigravityVersion(process.env.ANTIGRAVITY_VERSION);
 
 // Cloud Code API endpoints (in fallback order)
 const ANTIGRAVITY_ENDPOINT_DAILY = 'https://daily-cloudcode-pa.sandbox.googleapis.com';
@@ -83,7 +126,7 @@ export const ANTIGRAVITY_ENDPOINT_FALLBACKS = ENDPOINT_OVERRIDE
 
 // Required headers for Antigravity API requests
 export const ANTIGRAVITY_HEADERS = {
-    'User-Agent': getPlatformUserAgent(),
+    'User-Agent': buildUserAgent(ANTIGRAVITY_VERSION),
     'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
     'Client-Metadata': JSON.stringify({
         ideType: 'IDE_UNSPECIFIED',
@@ -91,6 +134,13 @@ export const ANTIGRAVITY_HEADERS = {
         pluginType: 'GEMINI'
     })
 };
+
+// Base URL of the separate Perplexity backend server (not part of this package)
+export const PERPLEXITY_SERVER_URL = resolveServerUrl(
+    process.env.PERPLEXITY_SERVER_URL,
+    'PERPLEXITY_SERVER_URL',
+    'http://localhost:8000'
+);
 
 // Default project ID if none can be discovered
 export const DEFAULT_PROJECT_ID = getEnv('DEFAULT_PROJECT_ID', 'rising-fact-p41fc');
@@ -320,6 +370,8 @@ export const OAUTH_REDIRECT_URI = SIGN_IN_REDIRECT_URI;
 export default {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
     ANTIGRAVITY_HEADERS,
+    ANTIGRAVITY_VERSION,
+    PERPLEXITY_SERVER_URL,
     DEFAULT_PROJECT_ID,
     TOKEN_REFRESH_INTERVAL_MS,
     REQUEST_BODY_LIMIT,
