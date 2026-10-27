@@ -328,11 +328,26 @@ package. Nothing is listening at its address.
    ```env
    PERPLEXITY_SERVER_URL=http://127.0.0.1:8001
    ```
+   It must be an `http://` or `https://` base URL; a path is allowed (`http://host:8001/base`), but
+   credentials (`user:password@`), a query string or a fragment are not. Such a value is ignored with a
+   warning at startup (credentials shown as `***`) and the default `http://localhost:8000` is used.
 3. Check that it answers: `curl http://localhost:8000/stats` (or `GET /perplexity-stats` on the proxy).
 4. If you do not use Perplexity, pick a Gemini or Claude model; they do not need this server.
 
-HTTP errors from the backend keep their meaning: a 429 becomes a rate-limit error (with `retry-after`),
-a 4xx stays a 4xx, and a 5xx becomes `502 api_error`.
+HTTP errors from the backend are mapped like other upstream errors (`src/http/error-mapper.js`), and a
+`retry-after` from the backend is passed on where shown:
+
+| Backend status | Client gets |
+|---|---|
+| 429 | `400 invalid_request_error` by default, or `429 rate_limit_error` with `RATE_LIMIT_STATUS=429` (both with `retry-after`) |
+| 400 | `400 invalid_request_error` |
+| 401 | `401 authentication_error` |
+| 403 | `403 permission_error` |
+| 404 | `404 not_found_error` |
+| 413 | `413 request_too_large` |
+| other 4xx | the same status, `invalid_request_error` |
+| 503, 529 | `529 overloaded_error` (with `retry-after`) |
+| other 5xx | `502 api_error` |
 
 ---
 

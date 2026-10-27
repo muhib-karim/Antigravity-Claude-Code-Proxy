@@ -465,13 +465,17 @@ export async function sendMessage(anthropicRequest, accountManager) {
                         if (!response.ok) {
                             const errorText = await response.text();
                             console.log(`[CloudCode] Error at ${endpoint}: ${response.status} - ${errorText}`);
+                            const error = upstreamError(response, errorText);
+                            // Before any status handling: a rejected client version is final for every
+                            // endpoint and account, whatever status (401, 429, 5xx...) carried it
+                            if (isUnsupportedClientVersion(error)) throw error;
 
                             if (response.status === 401) {
                                 // Auth error - clear caches and retry with fresh token
                                 console.log('[CloudCode] Auth error, refreshing token...');
                                 accountManager.clearTokenCache(account.email);
                                 accountManager.clearProjectCache(account.email);
-                                lastError = upstreamError(response, errorText);
+                                lastError = error;
                                 continue;
                             }
 
@@ -486,7 +490,7 @@ export async function sendMessage(anthropicRequest, accountManager) {
                                 continue;
                             }
 
-                            lastError = upstreamError(response, errorText);
+                            lastError = error;
                             continue;
                         }
 
@@ -504,6 +508,7 @@ export async function sendMessage(anthropicRequest, accountManager) {
                     }
 
                 } catch (endpointError) {
+                    if (isUnsupportedClientVersion(endpointError)) throw endpointError; // No other endpoint
                     if (isRateLimitError(endpointError)) {
                         throw endpointError; // Re-throw to trigger account switch
                     }
@@ -524,8 +529,9 @@ export async function sendMessage(anthropicRequest, accountManager) {
             }
 
         } catch (error) {
-            // A stream that already reached the client can never be retried or moved to another account
-            if (error.streamStarted) throw error;
+            // A stream that already reached the client can never be retried or moved to another account,
+            // and a rejected client version fails the same way on every account and attempt
+            if (error.streamStarted || isUnsupportedClientVersion(error)) throw error;
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} rate-limited, trying next...`);
@@ -774,12 +780,15 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                         const errorText = await response.text();
                         clearRequestTimeout(timeoutId);
                         console.log(`[CloudCode] Stream error at ${endpoint}: ${response.status} - ${errorText}`);
+                        const error = upstreamError(response, errorText);
+                        // Before any status handling: a rejected client version is final (see sendMessage)
+                        if (isUnsupportedClientVersion(error)) throw error;
 
                         if (response.status === 401) {
                             // Auth error - clear caches and retry
                             accountManager.clearTokenCache(account.email);
                             accountManager.clearProjectCache(account.email);
-                            lastError = upstreamError(response, errorText);
+                            lastError = error;
                             continue;
                         }
 
@@ -794,7 +803,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                             continue;
                         }
 
-                        lastError = upstreamError(response, errorText);
+                        lastError = error;
                         continue;
                     }
 
@@ -817,6 +826,7 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
                     return;
 
                 } catch (endpointError) {
+                    if (isUnsupportedClientVersion(endpointError)) throw endpointError; // No other endpoint
                     if (isRateLimitError(endpointError) || endpointError.streamStarted) {
                         throw endpointError; // Re-throw to trigger account switch (or abort a started stream)
                     }
@@ -837,8 +847,9 @@ export async function* sendMessageStream(anthropicRequest, accountManager) {
             }
 
         } catch (error) {
-            // A stream that already reached the client can never be retried or moved to another account
-            if (error.streamStarted) throw error;
+            // A stream that already reached the client can never be retried or moved to another account,
+            // and a rejected client version fails the same way on every account and attempt
+            if (error.streamStarted || isUnsupportedClientVersion(error)) throw error;
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, continue to next account
                 console.log(`[CloudCode] Account ${account.email} rate-limited, trying next...`);

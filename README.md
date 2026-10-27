@@ -231,7 +231,7 @@ Every setting is an environment variable (or a line in `.env` next to `package.j
 | `MANAGEMENT_RATE_LIMIT` | `300` | Requests per minute per client for everything except the Messages API |
 | `SHUTDOWN_TIMEOUT` | `30000` | How long SIGTERM waits for in-flight requests and streams before closing sockets (exit 1 if it has to) |
 | `ANTIGRAVITY_VERSION` | `2.5.5` | Antigravity client version sent in the `User-Agent` (dotted `x.y.z`; invalid values fall back with a warning). If requests fail with "This version of Antigravity is no longer supported", set it to the version of your installed Antigravity IDE |
-| `PERPLEXITY_SERVER_URL` | `http://localhost:8000` | Base URL of the separate Perplexity backend used by `perplexity-*`/`pplx-*` models. When it is down those requests get a 503 that names this URL; Gemini and Claude models are unaffected |
+| `PERPLEXITY_SERVER_URL` | `http://localhost:8000` | Base URL of the separate Perplexity backend used by `perplexity-*`/`pplx-*` models: http(s), optionally with a path; values with credentials, a query string or a fragment fall back to the default with a warning. When it is down those requests get a 503 that names this URL; Gemini and Claude models are unaffected |
 | `CLOUDCODE_ENDPOINTS` | Google Cloud Code endpoints | Comma-separated upstream override (the tests point this at a mock server) |
 
 ---

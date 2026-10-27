@@ -16,7 +16,7 @@ import { PerplexitySessionAccountManager } from './perplexity-session-account-ma
 import { getLoginService } from './perplexity-browser-login.js';
 import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
-import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, PERPLEXITY_SERVER_URL, resolveModelAlias } from './constants.js';
+import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, PERPLEXITY_SERVER_URL, joinUrl, resolveModelAlias } from './constants.js';
 import { rateLimit } from 'express-rate-limit';
 import { mapError, toHttpStatus } from './http/error-mapper.js';
 import { validateMessagesRequest, validateRoutingHeaders } from './http/validation.js';
@@ -25,7 +25,7 @@ import { detectModelSwitch } from './http/model-switch.js';
 import { registry, metricsMiddleware, setAccountCollector } from './http/metrics.js';
 import { RequestValidationError, ApiError, BackendUnavailableError, connectionErrorCode } from './errors.js';
 import { parseRetryAfter } from './resilience/backoff.js';
-import { redactString } from './utils/redact.js';
+import { redactString, redactUrlCredentials } from './utils/redact.js';
 import { AccountManager } from './account-manager.js';
 import { formatDuration } from './utils/helpers.js';
 import fs from 'fs';
@@ -831,7 +831,7 @@ app.get('/model-usage', (req, res) => {
 // Perplexity stats from Python server
 app.get('/perplexity-stats', async (req, res) => {
     try {
-        const pythonStats = await fetch(`${PERPLEXITY_SERVER_URL}/stats`);
+        const pythonStats = await fetch(joinUrl(PERPLEXITY_SERVER_URL, '/stats'));
         if (pythonStats.ok) {
             const stats = await pythonStats.json();
             res.json(stats);
@@ -1480,7 +1480,7 @@ app.post('/v1/messages', async (req, res) => {
             try {
                 // Forward to the Python server (PERPLEXITY_SERVER_URL, default http://localhost:8000)
                 // The Python server uses curl_cffi for TLS fingerprint impersonation
-                const pythonServerUrl = `${PERPLEXITY_SERVER_URL}/v1/chat/completions`;
+                const pythonServerUrl = joinUrl(PERPLEXITY_SERVER_URL, '/v1/chat/completions');
 
                 // Convert Anthropic format to OpenAI format for Python server
                 const openaiPayload = {
@@ -1498,7 +1498,7 @@ app.post('/v1/messages', async (req, res) => {
                     openaiPayload.messages.unshift({ role: 'system', content: systemText });
                 }
 
-                console.log(`[API] Forwarding to Python server: ${pythonServerUrl} (stream: ${stream})`);
+                console.log(`[API] Forwarding to Python server: ${redactUrlCredentials(pythonServerUrl)} (stream: ${stream})`);
                 const pythonResponse = await fetch(pythonServerUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1616,7 +1616,8 @@ app.post('/v1/messages', async (req, res) => {
                     console.error(`[API] ${unavailable.message}`);
                     sendError(res, unavailable);
                 } else {
-                    console.error('[API] Perplexity Error:', err);
+                    // The error text may quote the backend URL (e.g. fetch's invalid-URL errors)
+                    console.error('[API] Perplexity Error:', redactString(String(err?.stack || err)));
                     sendError(res, err);
                 }
             }

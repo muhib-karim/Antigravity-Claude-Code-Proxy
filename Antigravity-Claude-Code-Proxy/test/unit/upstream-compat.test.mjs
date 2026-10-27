@@ -5,22 +5,24 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { NEUTRAL_ENV } from '../../tests/smoke/helpers.mjs';
+
+// The defaults asserted below must not depend on the developer's shell or .env, so the settings
+// are neutralised before src/constants.js is evaluated (static imports would run first)
+Object.assign(process.env, NEUTRAL_ENV);
+const {
     ANTIGRAVITY_HEADERS,
     ANTIGRAVITY_VERSION,
     DEFAULT_ANTIGRAVITY_VERSION,
     PERPLEXITY_SERVER_URL,
     buildUserAgent,
+    joinUrl,
     resolveAntigravityVersion,
     resolveServerUrl
-} from '../../src/constants.js';
-import { mapError } from '../../src/http/error-mapper.js';
-import {
-    ApiError,
-    BackendUnavailableError,
-    connectionErrorCode,
-    isUnsupportedClientVersion
-} from '../../src/errors.js';
+} = await import('../../src/constants.js');
+const { mapError } = await import('../../src/http/error-mapper.js');
+const { ApiError, BackendUnavailableError, connectionErrorCode, isUnsupportedClientVersion } =
+    await import('../../src/errors.js');
 
 const UNSUPPORTED = 'This version of Antigravity is no longer supported. Please update to receive the latest features!';
 
@@ -87,6 +89,70 @@ describe('Perplexity backend URL', () => {
         assert.equal(log.messages.length, 2);
         assert.match(log.messages[0], /X/);
     });
+
+    it('returns a normalized origin + path', () => {
+        const log = recorder();
+        assert.equal(
+            resolveServerUrl('HTTP://PPLX.Internal:8000/base/', 'X', 'http://d', log.warn),
+            'http://pplx.internal:8000/base'
+        );
+        assert.equal(resolveServerUrl('https://pplx.internal:443', 'X', 'http://d', log.warn), 'https://pplx.internal');
+        assert.equal(resolveServerUrl('http://h:1/a/../b', 'X', 'http://d', log.warn), 'http://h:1/b');
+        assert.deepEqual(log.messages, []);
+    });
+
+    for (const bad of [
+        'http://127.0.0.1:8000?token=abc',
+        'http://127.0.0.1:8000/base?x=1',
+        'http://127.0.0.1:8000/#frag',
+        'http://127.0.0.1:8000/base#',
+        'http://127.0.0.1:8000/?'
+    ]) {
+        it(`rejects a query string or fragment: ${bad}`, () => {
+            const log = recorder();
+            assert.equal(resolveServerUrl(bad, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn), 'http://d');
+            assert.equal(log.messages.length, 1);
+            assert.match(log.messages[0], /PERPLEXITY_SERVER_URL .*query string or fragment; using http:\/\/d/);
+        });
+    }
+
+    for (const withCredentials of [
+        'http://alice:hunter2@127.0.0.1:8000',
+        'https://alice:hunter2@pplx.internal/base/',
+        'http://:hunter2@127.0.0.1:8000',
+        'http://hunter2@127.0.0.1:8000'
+    ]) {
+        it(`rejects credentials without showing them: ${withCredentials.replace(/\/\/.*@/, '//…@')}`, () => {
+            const log = recorder();
+            const resolved = resolveServerUrl(withCredentials, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn);
+            assert.equal(resolved, 'http://d');
+            assert.equal(log.messages.length, 1);
+            assert.ok(!log.messages[0].includes('hunter2'), log.messages[0]);
+            assert.ok(!log.messages[0].includes('alice'), log.messages[0]);
+            assert.match(log.messages[0], /"https?:\/\/\*\*\*@[^"]+" must not contain credentials/);
+        });
+    }
+
+    for (const invalid of [
+        'http://alice:hunter2@pplx.internal:99999',
+        'ftp://alice:hunter2@pplx.internal',
+        'alice:hunter2@pplx.internal',
+        'http://alice:hun/ter2@pplx.internal'
+    ]) {
+        it(`never shows credentials of an invalid value: ${invalid.replace(/hun\/?ter2/, '…')}`, () => {
+            const log = recorder();
+            assert.equal(resolveServerUrl(invalid, 'PERPLEXITY_SERVER_URL', 'http://d', log.warn), 'http://d');
+            assert.equal(log.messages.length, 1);
+            assert.ok(!/hunter2|hun\/ter2|ter2|alice/.test(log.messages[0]), log.messages[0]);
+            assert.match(log.messages[0], /\*\*\*@pplx\.internal/);
+        });
+    }
+
+    it('joins a base and a path with exactly one slash', () => {
+        assert.equal(joinUrl('http://h:1', '/stats'), 'http://h:1/stats');
+        assert.equal(joinUrl('http://h:1/base', '/v1/chat/completions'), 'http://h:1/base/v1/chat/completions');
+        assert.equal(joinUrl('http://h:1/base/', 'stats'), 'http://h:1/base/stats');
+    });
 });
 
 describe('"no longer supported" upstream rejection', () => {
@@ -112,9 +178,11 @@ describe('"no longer supported" upstream rejection', () => {
         });
     }
 
-    it('is not retried as a transient upstream failure', () => {
-        assert.equal(new ApiError(`API error 500: ${UNSUPPORTED}`, 500).retryable, true);
-        // cloudcode-client marks the rejection as final; the mapper does not depend on it
+    // Whether the request is retried is covered end to end in test/integration/upstream-compat.test.mjs
+    it('maps the rejection to 400 whether or not the error is marked retryable', () => {
+        const asSent = new ApiError(`API error 500: ${UNSUPPORTED}`, 500);
+        assert.equal(asSent.retryable, true);
+        assert.equal(mapError(asSent).status, 400);
         const final = Object.assign(new ApiError(`API error 500: ${UNSUPPORTED}`, 500), { retryable: false });
         assert.equal(mapError(final).status, 400);
     });
@@ -192,5 +260,33 @@ describe('Perplexity backend connection failures', () => {
         assert.equal(limited.status, 429);
         assert.equal(limited.type, 'rate_limit_error');
         assert.equal(limited.retryAfterSeconds, 7);
+    });
+
+    it('maps a backend 429 to 400 invalid_request_error by default (RATE_LIMIT_STATUS unset)', () => {
+        const mapped = mapError(new ApiError('Perplexity backend error 429: slow down', 429, 'api_error', 7000));
+        assert.equal(mapped.status, 400);
+        assert.equal(mapped.type, 'invalid_request_error');
+        assert.equal(mapped.retryAfterSeconds, 7);
+    });
+
+    for (const status of [503, 529]) {
+        it(`maps a backend ${status} to 529 overloaded_error (not 502)`, () => {
+            const mapped = mapError(
+                new ApiError(`Perplexity backend error ${status}: busy`, status, 'api_error', 3000)
+            );
+            assert.equal(mapped.status, 529);
+            assert.equal(mapped.type, 'overloaded_error');
+            assert.equal(mapped.retryAfterSeconds, 3);
+        });
+    }
+
+    it('never returns credentials that an unexpected error quotes from the backend URL', () => {
+        const err = new TypeError(
+            'Request cannot be constructed from a URL that includes credentials: http://alice:hunter2@pplx.internal:8000/v1'
+        );
+        const { status, message } = mapError(err);
+        assert.equal(status, 500);
+        assert.ok(!message.includes('hunter2') && !message.includes('alice'), message);
+        assert.match(message, /http:\/\/\*\*\*@pplx\.internal:8000\/v1/);
     });
 });

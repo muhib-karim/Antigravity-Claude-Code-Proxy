@@ -21,6 +21,14 @@ export const FAKE_ACCESS_TOKEN = 'mock-access-token';
 export const FAKE_PROJECT_ID = 'mock-project';
 
 /**
+ * Settings a developer may have exported (or put in .env) that change what the tests assert.
+ * Spawned proxies and in-process imports get them as '' rather than deleted: dotenv (loaded by
+ * src/constants.js) never overrides a variable that exists, so '' also masks a local .env file,
+ * and '' means "use the default" for each of them. Tests that need a value pass it explicitly.
+ */
+export const NEUTRAL_ENV = Object.freeze({ ANTIGRAVITY_VERSION: '', PERPLEXITY_SERVER_URL: '', RATE_LIMIT_STATUS: '' });
+
+/**
  * Find a free TCP port on the loopback interface.
  * @returns {Promise<number>}
  */
@@ -155,6 +163,7 @@ export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, 
     const port = await getFreePort();
     const env = {
         ...process.env,
+        ...NEUTRAL_ENV,
         HOME: home,
         USERPROFILE: home,
         APPDATA: join(home, 'AppData'),

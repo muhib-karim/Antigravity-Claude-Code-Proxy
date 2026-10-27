@@ -18,7 +18,8 @@ import {
     startProxy,
     PACKAGE_ROOT,
     FAKE_ACCESS_TOKEN,
-    FAKE_PROJECT_ID
+    FAKE_PROJECT_ID,
+    NEUTRAL_ENV
 } from '../../tests/smoke/helpers.mjs';
 
 const account = { email: 'mock-account', source: 'manual', apiKey: FAKE_ACCESS_TOKEN, projectId: FAKE_PROJECT_ID };
@@ -299,7 +300,8 @@ describe('Express 5 async error forwarding (in-process)', () => {
         'ACCOUNT_CONFIG_PATH',
         'PERPLEXITY_CONFIG_PATH',
         'PROXY_STATE_DIR',
-        'CLOUDCODE_ENDPOINTS'
+        'CLOUDCODE_ENDPOINTS',
+        ...Object.keys(NEUTRAL_ENV)
     ];
     const savedEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 
@@ -308,6 +310,7 @@ describe('Express 5 async error forwarding (in-process)', () => {
         const accountsPath = join(tmp, 'accounts.json');
         writeFileSync(accountsPath, JSON.stringify({ accounts: [account], settings: {}, activeIndex: 0 }));
         Object.assign(process.env, {
+            ...NEUTRAL_ENV,
             HOME: tmp,
             USERPROFILE: tmp,
             HOST: '127.0.0.1',
@@ -376,6 +379,7 @@ describe('startup on a busy port', () => {
                 cwd: PACKAGE_ROOT,
                 env: {
                     ...process.env,
+                    ...NEUTRAL_ENV,
                     HOME: tmp,
                     USERPROFILE: tmp,
                     HOST: '127.0.0.1',

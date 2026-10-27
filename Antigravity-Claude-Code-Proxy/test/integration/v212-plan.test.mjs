@@ -17,7 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { startProxy, getFreePort, PACKAGE_ROOT, FAKE_PROJECT_ID } from '../../tests/smoke/helpers.mjs';
+import { startProxy, getFreePort, PACKAGE_ROOT, FAKE_PROJECT_ID, NEUTRAL_ENV } from '../../tests/smoke/helpers.mjs';
 import { startScriptedUpstream } from '../helpers/scripted-upstream.mjs';
 import { AccountManager } from '../../src/account-manager.js';
 
@@ -105,6 +105,7 @@ async function spawnProxy({ nodeArgs = [], args = [], env = {}, upstreamUrl = 'h
     const port = await getFreePort();
     const childEnv = {
         ...process.env,
+        ...NEUTRAL_ENV,
         HOME: home,
         USERPROFILE: home,
         APPDATA: join(home, 'AppData'),
@@ -349,8 +350,31 @@ describe('v2.12 plan item 2: cooldown after 429 and Retry-After', () => {
         await upstream?.close();
     });
 
-    const RETRY_AFTER_S = 2;
-    const accountsFile = () => JSON.parse(readFileSync(join(dirname(proxy.home), 'accounts.json'), 'utf8'));
+    // Far longer than this describe block can take, so no assertion can race the cooldown's expiry;
+    // expiry itself is covered with a controlled clock below
+    const RETRY_AFTER_S = 600;
+    const accountsPath = () => join(dirname(proxy.home), 'accounts.json');
+
+    /**
+     * Poll the account store (written in the background) until `predicate` holds for an account.
+     * @param {string} email
+     * @param {(account: any) => boolean} predicate
+     * @returns {Promise<any>} The account record
+     */
+    async function waitForStoredAccount(email, predicate, timeoutMs = 10000) {
+        const deadline = Date.now() + timeoutMs;
+        let last;
+        while (Date.now() < deadline) {
+            try {
+                last = JSON.parse(readFileSync(accountsPath(), 'utf8')).accounts.find(acc => acc.email === email);
+                if (last && predicate(last)) return last;
+            } catch {
+                /* mid-write or not written yet */
+            }
+            await sleep(25);
+        }
+        assert.fail(`account store never satisfied the condition for ${email}; last: ${JSON.stringify(last)}`);
+    }
 
     it('cools the account down for Retry-After and serves the request from another account', async () => {
         upstream.reset();
@@ -361,17 +385,17 @@ describe('v2.12 plan item 2: cooldown after 429 and Retry-After', () => {
         });
         const started = Date.now();
         const res = await postMessages(proxy.baseUrl);
+        const finished = Date.now();
         assert.equal(res.status, 200);
         await res.arrayBuffer();
         assert.deepEqual(tokensUsed(upstream), ['token-a', 'token-b']);
 
-        await sleep(50); // the account store is written in the background
-        const a = accountsFile().accounts.find(acc => acc.email === 'a@example.test');
-        assert.equal(a.isRateLimited, true);
-        const cooldown = a.rateLimitResetTime - started;
+        const a = await waitForStoredAccount('a@example.test', acc => acc.isRateLimited === true);
+        // The cooldown starts when the 429 arrives, somewhere between sending and receiving the reply
         assert.ok(
-            cooldown >= RETRY_AFTER_S * 1000 - 100 && cooldown <= RETRY_AFTER_S * 1000 + 1000,
-            `cooldown ${cooldown}ms`
+            a.rateLimitResetTime >= started + RETRY_AFTER_S * 1000 - 1000 &&
+                a.rateLimitResetTime <= finished + RETRY_AFTER_S * 1000 + 1000,
+            `reset ${a.rateLimitResetTime - started}ms after the request started`
         );
 
         const health = await (await fetch(`${proxy.baseUrl}/health`)).json();
@@ -384,25 +408,6 @@ describe('v2.12 plan item 2: cooldown after 429 and Retry-After', () => {
         upstream.reset();
         await (await postMessages(proxy.baseUrl)).arrayBuffer();
         assert.deepEqual(tokensUsed(upstream), ['token-b']);
-    });
-
-    it('brings the account back once the cooldown has passed', async () => {
-        await sleep(RETRY_AFTER_S * 1000 + 200);
-        const health = await (await fetch(`${proxy.baseUrl}/health`)).json();
-        assert.equal(health.available, 2);
-        assert.equal(health.rateLimited, 0);
-
-        // When the current account is limited in turn, the recovered one serves the request
-        upstream.reset();
-        upstream.enqueue({
-            status: 429,
-            headers: { 'retry-after': '30' },
-            json: { error: { code: 429, message: 'RESOURCE_EXHAUSTED' } }
-        });
-        const res = await postMessages(proxy.baseUrl);
-        assert.equal(res.status, 200);
-        await res.arrayBuffer();
-        assert.deepEqual(tokensUsed(upstream), ['token-b', 'token-a']);
     });
 });
 
@@ -434,6 +439,29 @@ describe('v2.12 plan item 2: cooldown expiry with a controlled clock', () => {
         mock.timers.tick(1);
         assert.equal(manager.clearExpiredLimits(), 1);
         assert.equal(manager.getAvailableAccounts().length, 2);
+    });
+
+    it('reports an expired cooldown as available and uses the recovered account again', async () => {
+        const path = join(dir, 'accounts-recover.json');
+        writeFileSync(path, JSON.stringify({ accounts, settings: {}, activeIndex: 0 }));
+        const manager = new AccountManager(path);
+        await manager.initialize();
+
+        mock.timers.reset(); // the previous test may have left the clock enabled
+        mock.timers.enable({ apis: ['Date'], now: 2_000_000 });
+        const cooldownMs = 10 * 60 * 1000;
+        manager.markRateLimited('a@example.test', cooldownMs);
+        assert.equal(manager.pickStickyAccount().account.email, 'b@example.test');
+
+        mock.timers.tick(cooldownMs);
+        // /health reads getStatus(): the expired cooldown must show as available without a selection
+        const status = manager.getStatus();
+        assert.equal(status.available, 2);
+        assert.equal(status.rateLimited, 0);
+
+        // When the current account is limited in turn, the recovered one serves the next request
+        manager.markRateLimited('b@example.test', cooldownMs);
+        assert.equal(manager.pickStickyAccount().account.email, 'a@example.test');
     });
 });
 

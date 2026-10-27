@@ -82,6 +82,26 @@ describe('ANTIGRAVITY_VERSION: User-Agent sent upstream', () => {
     }
 });
 
+const rejection = status => ({
+    status,
+    json: { error: { code: status, message: UNSUPPORTED, status: 'FAILED_PRECONDITION' } }
+});
+
+/**
+ * @param {Response} res
+ */
+async function assertVersionHint(res) {
+    assert.equal(res.status, 400);
+    assert.match(res.headers.get('content-type'), /^application\/json/);
+    const body = await res.json();
+    assert.equal(body.type, 'error');
+    assert.equal(body.error.type, 'invalid_request_error');
+    assert.match(body.error.message, /no longer supported/);
+    assert.match(body.error.message, /antigravity\/2\.5\.5/);
+    assert.match(body.error.message, /ANTIGRAVITY_VERSION/);
+    return body;
+}
+
 describe('"no longer supported" rejection from the upstream', () => {
     let upstream;
     let proxy;
@@ -94,26 +114,6 @@ describe('"no longer supported" rejection from the upstream', () => {
         await proxy?.stop();
         await upstream?.close();
     });
-
-    const rejection = status => ({
-        status,
-        json: { error: { code: status, message: UNSUPPORTED, status: 'FAILED_PRECONDITION' } }
-    });
-
-    /**
-     * @param {Response} res
-     */
-    async function assertVersionHint(res) {
-        assert.equal(res.status, 400);
-        assert.match(res.headers.get('content-type'), /^application\/json/);
-        const body = await res.json();
-        assert.equal(body.type, 'error');
-        assert.equal(body.error.type, 'invalid_request_error');
-        assert.match(body.error.message, /no longer supported/);
-        assert.match(body.error.message, /antigravity\/2\.5\.5/);
-        assert.match(body.error.message, /ANTIGRAVITY_VERSION/);
-        return body;
-    }
 
     it('non-streaming: maps the upstream error to a 400 with the version hint', async () => {
         upstream.reset();
@@ -154,6 +154,45 @@ describe('"no longer supported" rejection from the upstream', () => {
         assert.equal(res.status, 200);
         assert.equal((await res.json()).content[0].text, UNSUPPORTED);
     });
+});
+
+describe('"no longer supported" rejection is final across endpoints, accounts and retries', () => {
+    let first;
+    let second;
+    let proxy;
+    const accounts = [account, { ...account, email: 'mock-account-2', apiKey: 'mock-token-2' }];
+
+    before(async () => {
+        first = await startScriptedUpstream();
+        second = await startScriptedUpstream();
+        // Two Cloud Code endpoints (CLOUDCODE_ENDPOINTS), two accounts, and transient retries enabled
+        proxy = await startProxy({ upstreamUrl: `${first.url},${second.url}`, accounts, env: FAST_RETRIES });
+    });
+    after(async () => {
+        await proxy?.stop();
+        await first?.close();
+        await second?.close();
+    });
+
+    for (const stream of [false, true]) {
+        for (const status of [400, 401, 403, 426, 429, 500]) {
+            it(`${stream ? 'streaming' : 'non-streaming'}: a ${status} rejection makes exactly one upstream call`, async () => {
+                const retried = { status: 503, json: { error: { code: 503, message: 'retried: overloaded' } } };
+                first.reset();
+                second.reset();
+                first.enqueue(rejection(status));
+                // Anything that tries again (next endpoint, account or backoff) gets a different error
+                for (let i = 0; i < 6; i++) {
+                    first.enqueue(retried);
+                    second.enqueue(retried);
+                }
+                const res = await postMessages(proxy.baseUrl, gemini({ stream }));
+                const body = await assertVersionHint(res);
+                assert.doesNotMatch(body.error.message, /retried/);
+                assert.equal(first.requests.length + second.requests.length, 1, 'one upstream call in total');
+            });
+        }
+    }
 });
 
 describe('Perplexity backend not running', () => {
@@ -297,4 +336,169 @@ describe('Perplexity backend replies', () => {
         assert.deepEqual(await res.json(), { requests_today: 3 });
         assert.equal(backend.requests[0].url, '/stats');
     });
+});
+
+describe('Perplexity backend errors with the default RATE_LIMIT_STATUS', () => {
+    let backend;
+    let proxy;
+
+    before(async () => {
+        backend = await startScriptedUpstream();
+        proxy = await startProxy({ accounts: [account], env: { PERPLEXITY_SERVER_URL: backend.url } });
+    });
+    after(async () => {
+        await proxy?.stop();
+        await backend?.close();
+    });
+
+    for (const stream of [false, true]) {
+        const mode = stream ? 'streaming' : 'non-streaming';
+
+        it(`${mode}: maps a backend 429 to 400 invalid_request_error that keeps Retry-After`, async () => {
+            backend.reset();
+            backend.enqueue({
+                status: 429,
+                headers: { 'retry-after': '12' },
+                json: { error: { message: 'slow down' } }
+            });
+            const res = await postMessages(proxy.baseUrl, pplx({ stream }));
+            assert.equal(res.status, 400);
+            assert.equal(res.headers.get('retry-after'), '12');
+            assert.equal((await res.json()).error.type, 'invalid_request_error');
+        });
+
+        for (const status of [503, 529]) {
+            it(`${mode}: maps a backend ${status} to 529 overloaded_error`, async () => {
+                backend.reset();
+                backend.enqueue({ status, headers: { 'retry-after': '5' }, json: { error: { message: 'busy' } } });
+                const res = await postMessages(proxy.baseUrl, pplx({ stream }));
+                assert.equal(res.status, 529);
+                assert.equal(res.headers.get('retry-after'), '5');
+                assert.equal((await res.json()).error.type, 'overloaded_error');
+            });
+        }
+    }
+});
+
+describe('PERPLEXITY_SERVER_URL: base path, query string and fragment', () => {
+    /**
+     * @param {(backendUrl: string) => string} configure - PERPLEXITY_SERVER_URL for the backend's URL
+     * @param {(ctx: {backend: any, proxy: any}) => Promise<void>} check
+     */
+    async function withBackend(configure, check) {
+        const backend = await startScriptedUpstream();
+        const proxy = await startProxy({ accounts: [account], env: { PERPLEXITY_SERVER_URL: configure(backend.url) } });
+        try {
+            await check({ backend, proxy });
+        } finally {
+            await proxy.stop();
+            await backend.close();
+        }
+    }
+
+    for (const suffix of ['/base', '/base/']) {
+        it(`keeps a base path (${suffix}) for /v1/chat/completions and /stats`, async () => {
+            await withBackend(
+                url => `${url}${suffix}`,
+                async ({ backend, proxy }) => {
+                    backend.enqueue(
+                        { json: { choices: [{ message: { role: 'assistant', content: 'Blue.' } }] } },
+                        { sse: [{ choices: [{ delta: { content: 'Blue.' } }] }] },
+                        { json: { requests_today: 1 } }
+                    );
+                    const res = await postMessages(proxy.baseUrl, pplx());
+                    assert.equal(res.status, 200);
+                    assert.equal((await res.json()).content[0].text, 'Blue.');
+                    const streamed = await postMessages(proxy.baseUrl, pplx({ stream: true }));
+                    assert.equal(streamed.status, 200);
+                    await streamed.text();
+                    assert.deepEqual(await (await fetch(`${proxy.baseUrl}/perplexity-stats`)).json(), {
+                        requests_today: 1
+                    });
+                    assert.deepEqual(
+                        backend.requests.map(r => r.url),
+                        ['/base/v1/chat/completions', '/base/v1/chat/completions', '/base/stats']
+                    );
+                }
+            );
+        });
+    }
+
+    for (const suffix of ['/base?token=abc', '/?x=1', '/base#frag', '/#']) {
+        it(`rejects ${suffix} with a warning and never sends it a request`, async () => {
+            await withBackend(
+                url => `${url}${suffix}`,
+                async ({ backend, proxy }) => {
+                    await (await postMessages(proxy.baseUrl, pplx())).arrayBuffer();
+                    await (await postMessages(proxy.baseUrl, pplx({ stream: true }))).arrayBuffer();
+                    await (await fetch(`${proxy.baseUrl}/perplexity-stats`)).arrayBuffer();
+                    assert.deepEqual(backend.requests, []);
+                    assert.match(
+                        proxy.logs(),
+                        /PERPLEXITY_SERVER_URL "[^"]+" must not contain a query string or fragment; using http:\/\/localhost:8000/
+                    );
+                }
+            );
+        });
+    }
+});
+
+describe('PERPLEXITY_SERVER_URL with credentials never leaks them', () => {
+    const PASSWORD = 'hunter2';
+
+    /** @type {Array<{name: string, value: (backendUrl: string) => string, problem: RegExp}>} */
+    const cases = [
+        {
+            name: 'a valid URL with user:password',
+            value: url => url.replace('http://', `http://alice:${PASSWORD}@`),
+            problem: /must not contain credentials/
+        },
+        {
+            name: 'a valid URL with a base path and user:password',
+            value: url => `${url.replace('http://', `http://alice:${PASSWORD}@`)}/base`,
+            problem: /must not contain credentials/
+        },
+        {
+            name: 'an invalid URL (bad port) with user:password',
+            value: () => `http://alice:${PASSWORD}@pplx.invalid:99999`,
+            problem: /is not an http\(s\) URL/
+        },
+        {
+            name: 'a non-http URL with user:password',
+            value: () => `ftp://alice:${PASSWORD}@pplx.invalid/`,
+            problem: /is not an http\(s\) URL/
+        }
+    ];
+
+    for (const { name, value, problem } of cases) {
+        it(`${name}: falls back to the default; logs and responses never contain the password`, async () => {
+            const backend = await startScriptedUpstream();
+            const proxy = await startProxy({ accounts: [account], env: { PERPLEXITY_SERVER_URL: value(backend.url) } });
+            try {
+                const bodies = [];
+                for (const body of [pplx(), pplx({ stream: true })]) {
+                    const res = await postMessages(proxy.baseUrl, body);
+                    bodies.push(`${res.status} ${JSON.stringify([...res.headers])} ${await res.text()}`);
+                }
+                const stats = await fetch(`${proxy.baseUrl}/perplexity-stats`);
+                bodies.push(await stats.text());
+
+                for (const text of [...bodies, proxy.logs()]) {
+                    assert.ok(!text.includes(PASSWORD), `password leaked in:\n${text}`);
+                    assert.ok(!text.includes('alice:'), `username leaked in:\n${text}`);
+                }
+                assert.deepEqual(backend.requests, [], 'the credential-bearing URL is never used');
+                const warning =
+                    /\[Config\] PERPLEXITY_SERVER_URL "([^"]+)" ([^;]+); using http:\/\/localhost:8000/.exec(
+                        proxy.logs()
+                    );
+                assert.ok(warning, proxy.logs());
+                assert.match(warning[1], /^(?:https?|ftp):\/\/\*\*\*@/);
+                assert.match(warning[2], problem);
+            } finally {
+                await proxy.stop();
+                await backend.close();
+            }
+        });
+    }
 });

@@ -11,8 +11,22 @@ export const REDACTED = '[REDACTED]';
 /** Object keys whose values are always secret (case-insensitive). */
 const SENSITIVE_KEY = /token$|secret|password|passwd|authorization|cookie|api[-_]?key|private[-_]?key/i;
 
+// Credentials embedded in a URL ("scheme://user:pass@host"). The userinfo ends at the last "@"
+// before the path, query or fragment; the length bound keeps the scan cheap.
+const URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s/?#"'<>\\]{1,2048}@/gi;
+
+/**
+ * Replace credentials embedded in URLs with "***" ("http://user:pass@host" -> "http://***@host").
+ * @param {string} text
+ * @returns {string}
+ */
+export function redactUrlCredentials(text) {
+    return text.replace(URL_USERINFO, '$1***@');
+}
+
 /** @type {Array<[RegExp, string]>} */
 const STRING_PATTERNS = [
+    [URL_USERINFO, '$1***@'],
     // "Authorization: Bearer <token>" and friends
     [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/g, `$1 ${REDACTED}`],
     // Google OAuth access tokens and refresh tokens

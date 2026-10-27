@@ -90,21 +90,52 @@ export function buildUserAgent(version, os = platform(), architecture = arch()) 
 }
 
 /**
- * Validate a base URL setting: http(s) only, trailing slashes removed.
+ * Validate a base URL setting: http(s) only, without credentials, query string or fragment.
+ * Credentials are refused because the URL is logged and shown in error messages (and fetch
+ * rejects such URLs anyway); a query or fragment would break the paths appended to it.
  * @param {string|undefined} value - Raw setting
  * @param {string} name - Setting name for the warning
  * @param {string} fallback - Used when unset or invalid
  * @param {(message: string) => void} [warn] - Called when the value is invalid
- * @returns {string}
+ * @returns {string} Normalized base URL (origin + path, no trailing slash), or `fallback`
  */
 export function resolveServerUrl(value, name, fallback, warn = console.warn) {
     const trimmed = (value ?? '').trim();
     if (trimmed === '') return fallback;
-    if (URL.canParse(trimmed) && /^https?:$/.test(new URL(trimmed).protocol)) {
-        return trimmed.replace(/\/+$/, '');
+    const parsed = URL.canParse(trimmed) ? new URL(trimmed) : null;
+    let problem = null;
+    if (!parsed || !/^https?:$/.test(parsed.protocol)) {
+        problem = 'is not an http(s) URL';
+    } else if (parsed.username || parsed.password) {
+        problem = 'must not contain credentials (user:password@)';
+    } else if (parsed.search || parsed.hash || /[?#]/.test(trimmed)) {
+        problem = 'must not contain a query string or fragment';
     }
-    warn(`[Config] ${name} "${trimmed}" is not an http(s) URL; using ${fallback}`);
-    return fallback;
+    if (!parsed || problem) {
+        warn(`[Config] ${name} "${maskUserinfo(trimmed)}" ${problem}; using ${fallback}`);
+        return fallback;
+    }
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+}
+
+/**
+ * Mask everything between "scheme://" and the last "@" of a (possibly unparseable) URL setting,
+ * so a warning never shows a password even when the value is malformed.
+ * @param {string} value
+ * @returns {string}
+ */
+function maskUserinfo(value) {
+    return value.replace(/^([a-z][a-z0-9+.-]*:\/\/)?[^@]*@/i, (_, scheme = '') => `${scheme}***@`);
+}
+
+/**
+ * Append a path to a base URL from resolveServerUrl() with exactly one "/" between them.
+ * @param {string} base - e.g. "http://host:1234/base"
+ * @param {string} path - e.g. "/v1/chat/completions"
+ * @returns {string}
+ */
+export function joinUrl(base, path) {
+    return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
 // Antigravity client version sent in the User-Agent (ANTIGRAVITY_VERSION overrides it)

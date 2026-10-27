@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { redact, redactString, installConsoleRedaction } from '../../src/utils/redact.js';
+import { redact, redactString, redactUrlCredentials, installConsoleRedaction } from '../../src/utils/redact.js';
 
 // Key-shaped values are assembled at runtime so no credential-looking literal sits in the source
 // (secret scanners would flag it). These are synthetic and grant access to nothing.
@@ -11,6 +11,28 @@ const FAKE_GOOGLE_KEY = 'AIza' + 'Sy' + 'x'.repeat(33);
 const FAKE_ANTHROPIC_KEY = ['sk', 'ant', 'api03', 'synthetic0000000'].join('-');
 
 describe('redactString', () => {
+    it('replaces credentials embedded in URLs with ***', () => {
+        const cases = [
+            ['http://alice:hunter2@host:8000/v1', 'http://***@host:8000/v1'],
+            ['fetch https://alice:hunter2@pplx.internal failed', 'fetch https://***@pplx.internal failed'],
+            ['postgres://svc:hunter2@db/x', 'postgres://***@db/x'],
+            ['token-only http://hunter2@host', 'token-only http://***@host'],
+            // unencoded "@" inside the password: the userinfo ends at the last "@" of the authority
+            ['http://alice:hun@ter2@host/p?mail=a@b.test', 'http://***@host/p?mail=a@b.test'],
+            ['"url":"http://alice:hunter2@host:99999"', '"url":"http://***@host:99999"']
+        ];
+        for (const [input, expected] of cases) {
+            assert.equal(redactString(input), expected);
+            assert.equal(redactUrlCredentials(input), expected);
+        }
+    });
+
+    it('leaves URLs without credentials and plain e-mail addresses alone', () => {
+        for (const text of ['http://host:8000/base?x=1', 'mail alice@example.test', 'see https://h.test/a@b']) {
+            assert.equal(redactUrlCredentials(text), text);
+        }
+    });
+
     it('masks bearer tokens, Google access/refresh tokens and API keys', () => {
         const input = [
             'Authorization: Bearer abc.def-123',
