@@ -98,7 +98,7 @@
 
 ### Prerequisites
 
-- **Node.js** 18+ 
+- **Node.js** 22.13+
 - **Antigravity** desktop app ([Download](https://antigravity.dev))
 - **Claude Code CLI** (`npm install -g @anthropic-ai/claude-code`)
 
