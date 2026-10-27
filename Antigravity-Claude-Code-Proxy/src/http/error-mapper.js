@@ -6,7 +6,8 @@
  * permission_error (403), not_found_error (404), request_too_large (413),
  * rate_limit_error (429), api_error (500), overloaded_error (529), timeout_error (504).
  */
-import { isRateLimitError, isAuthError } from '../errors.js';
+import { isRateLimitError, isAuthError, isUnsupportedClientVersion } from '../errors.js';
+import { ANTIGRAVITY_VERSION } from '../constants.js';
 import { redactString } from '../utils/redact.js';
 
 /**
@@ -75,6 +76,18 @@ function result(status, type, message, retryAfterSeconds = null) {
 }
 
 /**
+ * What to tell the user when Cloud Code rejects the proxy's Antigravity client version.
+ * @returns {string}
+ */
+export function unsupportedVersionHint() {
+    return (
+        `Antigravity rejected this proxy's client version (antigravity/${ANTIGRAVITY_VERSION}): "This version of ` +
+        'Antigravity is no longer supported." Set ANTIGRAVITY_VERSION to the version of your installed ' +
+        'Antigravity IDE (or update the proxy) and restart it.'
+    );
+}
+
+/**
  * Map any thrown value to an Anthropic error response.
  * @param {unknown} thrown
  * @param {MapOptions} [options]
@@ -101,6 +114,14 @@ export function mapError(thrown, options = {}) {
     }
     if (error.name === 'TimeoutError' || error.code === 'TIMEOUT') {
         return result(504, 'timeout_error', message);
+    }
+
+    if (error.name === 'BackendUnavailableError') {
+        return result(503, 'api_error', message);
+    }
+    // A configuration problem on our side, whatever status the upstream used: retrying cannot help
+    if (isUnsupportedClientVersion(error)) {
+        return result(400, 'invalid_request_error', unsupportedVersionHint());
     }
 
     if (statusCode === 429 || (statusCode === null && isRateLimitError(error))) {

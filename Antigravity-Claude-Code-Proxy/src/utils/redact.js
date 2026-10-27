@@ -11,6 +11,52 @@ export const REDACTED = '[REDACTED]';
 /** Object keys whose values are always secret (case-insensitive). */
 const SENSITIVE_KEY = /token$|secret|password|passwd|authorization|cookie|api[-_]?key|private[-_]?key/i;
 
+export const URL_PLACEHOLDER = '[URL REDACTED]';
+
+// "scheme://" (or "scheme:\\", which the URL parser treats alike for http(s)) and the authority
+// candidate after it. Per the WHATWG URL parser the authority ends at the first "/", "?", "#" or
+// "\" (or the end); whitespace also ends it here because it ends a URL in free text. Quotes and
+// angle brackets do not: a malformed password may contain them. The match cannot backtrack, so
+// the scan stays linear.
+const URL_AUTHORITY = /\b([a-z][a-z0-9+.-]{0,30}:[/\\]{2,})([^\s/?#\\]*)/gi;
+
+/**
+ * @param {string} _match
+ * @param {string} scheme - "scheme://"
+ * @param {string} authority - Everything up to the end of the authority
+ * @returns {string}
+ */
+function maskAuthority(_match, scheme, authority) {
+    // The userinfo is everything up to the LAST "@" of the authority; "%40" is not a separator
+    const at = authority.lastIndexOf('@');
+    return at === -1 ? `${scheme}${authority}` : `${scheme}***@${authority.slice(at + 1)}`;
+}
+
+/**
+ * Replace credentials embedded in URLs with "***" ("http://user:pass@host" -> "http://***@host").
+ * An "@" in the path, query or fragment is left alone.
+ * @param {string} text
+ * @returns {string}
+ */
+export function redactUrlCredentials(text) {
+    return text.replace(URL_AUTHORITY, maskAuthority);
+}
+
+/**
+ * Redact a single URL value for display. The masked result is checked with the URL parser; if
+ * the value cannot be parsed, or the parser still finds credentials that the text masking could
+ * not delimit (e.g. "http:user:pass@host"), the whole value is replaced with URL_PLACEHOLDER.
+ * @param {string} value
+ * @returns {string}
+ */
+export function redactUrl(value) {
+    if (!URL.canParse(value)) return URL_PLACEHOLDER;
+    const masked = redactUrlCredentials(value);
+    const parsed = URL.canParse(masked) ? new URL(masked) : null;
+    if (!parsed || parsed.password || (parsed.username && parsed.username !== '***')) return URL_PLACEHOLDER;
+    return masked;
+}
+
 /** @type {Array<[RegExp, string]>} */
 const STRING_PATTERNS = [
     // "Authorization: Bearer <token>" and friends
@@ -45,7 +91,7 @@ const STRING_PATTERNS = [
  * @returns {string}
  */
 export function redactString(text) {
-    let out = text;
+    let out = redactUrlCredentials(text);
     for (const [pattern, replacement] of STRING_PATTERNS) {
         out = out.replace(pattern, replacement);
     }

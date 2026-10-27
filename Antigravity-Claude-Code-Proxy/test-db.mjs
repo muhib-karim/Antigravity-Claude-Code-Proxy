@@ -32,7 +32,7 @@ async function main() {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
-                    'User-Agent': 'antigravity/1.11.5 win32/x64',
+                    'User-Agent': 'antigravity/2.5.5 win32/x64',
                     'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1'
                 },
                 body: JSON.stringify({
@@ -91,7 +91,7 @@ async function main() {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
-                    'User-Agent': 'antigravity/1.11.5 win32/x64',
+                    'User-Agent': 'antigravity/2.5.5 win32/x64',
                     'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1'
                 },
                 body: JSON.stringify(payload)

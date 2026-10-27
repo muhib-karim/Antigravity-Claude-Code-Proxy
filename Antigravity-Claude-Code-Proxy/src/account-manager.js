@@ -689,6 +689,8 @@ export class AccountManager {
      * @returns {{accounts: Array, settings: Object}} Status object with accounts and settings
      */
     getStatus() {
+        // Report cooldowns that have run out as available (they are otherwise cleared only on selection)
+        this.clearExpiredLimits();
         const available = this.getAvailableAccounts();
         const rateLimited = this.#accounts.filter(a => a.isRateLimited);
         const invalid = this.getInvalidAccounts();

@@ -150,6 +150,87 @@ export class RequestValidationError extends AntigravityError {
 }
 
 /**
+ * A backend the proxy forwards to could not be reached (surfaced as 503 api_error)
+ */
+export class BackendUnavailableError extends AntigravityError {
+    /**
+     * @param {string} backend - Human-readable backend name, e.g. "Perplexity"
+     * @param {string} url - Base URL that was tried (credentials in it are never shown)
+     * @param {string} causeCode - Connection error code, e.g. ECONNREFUSED
+     */
+    constructor(backend, url, causeCode) {
+        const shown = displayUrl(url);
+        super(
+            `${backend} backend is not reachable at ${shown} (${causeCode}). ${backend} models need the separate ` +
+            `${backend} server running; start it or set PERPLEXITY_SERVER_URL. Gemini and Claude models are unaffected.`,
+            causeCode,
+            true,
+            { backend, url: shown }
+        );
+        this.name = 'BackendUnavailableError';
+        this.backend = backend;
+        this.url = shown;
+    }
+}
+
+/**
+ * Strip credentials, query and fragment from a URL for messages.
+ * @param {string} url
+ * @returns {string}
+ */
+function displayUrl(url) {
+    if (!URL.canParse(url)) return '[invalid URL]';
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname === '/' ? '' : parsed.pathname}`;
+}
+
+// Connection-level failure codes (Node net/dns and undici)
+const CONNECTION_ERROR_CODES = new Set([
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ETIMEDOUT',
+    'UND_ERR_CONNECT_TIMEOUT',
+    'UND_ERR_SOCKET'
+]);
+
+/**
+ * Find the connection error code behind a failed fetch ("TypeError: fetch failed" keeps it in
+ * `cause`; connecting to a name with several addresses reports an AggregateError).
+ * @param {unknown} error
+ * @returns {string|null} e.g. ECONNREFUSED, or null when this is not a connection failure
+ */
+export function connectionErrorCode(error) {
+    const pending = [error];
+    for (let depth = 0; pending.length > 0 && depth < 20; depth++) {
+        /** @type {any} */
+        const current = pending.shift();
+        if (!current || typeof current !== 'object') continue;
+        if (typeof current.code === 'string' && CONNECTION_ERROR_CODES.has(current.code)) return current.code;
+        if (current.cause) pending.push(current.cause);
+        if (Array.isArray(current.errors)) pending.push(...current.errors);
+    }
+    return null;
+}
+
+/**
+ * Check if an upstream HTTP error says the Antigravity client version is too old
+ * ("This version of Antigravity is no longer supported. Please update ...").
+ * Only errors carrying an upstream status count; model text is never inspected.
+ * @param {any} error
+ * @returns {boolean}
+ */
+export function isUnsupportedClientVersion(error) {
+    return (
+        typeof error?.statusCode === 'number' &&
+        /version of Antigravity is no longer supported/i.test(String(error.message || ''))
+    );
+}
+
+/**
  * Check if an error is a rate limit error
  * Works with both custom error classes and legacy string-based errors
  * @param {Error} error - Error to check
@@ -187,6 +268,9 @@ export default {
     ApiError,
     TimeoutError,
     RequestValidationError,
+    BackendUnavailableError,
+    connectionErrorCode,
+    isUnsupportedClientVersion,
     isRateLimitError,
     isAuthError
 };

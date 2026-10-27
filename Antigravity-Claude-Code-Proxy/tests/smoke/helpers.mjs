@@ -21,6 +21,26 @@ export const FAKE_ACCESS_TOKEN = 'mock-access-token';
 export const FAKE_PROJECT_ID = 'mock-project';
 
 /**
+ * Settings a developer may have exported (or put in .env) that change what the tests assert.
+ * Spawned proxies and in-process imports get them as '' rather than deleted: dotenv (loaded by
+ * src/constants.js) never overrides a variable that exists, so '' also masks a local .env file,
+ * and '' means "use the default" for each of them. Tests that need a value pass it explicitly.
+ */
+export const NEUTRAL_ENV = Object.freeze({ ANTIGRAVITY_VERSION: '', PERPLEXITY_SERVER_URL: '', RATE_LIMIT_STATUS: '' });
+
+/**
+ * Environment for spawned proxies that preloads test/helpers/default-backend-guard.mjs: requests
+ * to the default Perplexity backend (http://localhost:8000) are refused in-process and logged as
+ * "[default-backend-guard] blocked <method> <path>", so no test can reach a real local backend.
+ * @param {string} [nodeOptions] - NODE_OPTIONS to keep (e.g. from the parent environment)
+ * @returns {{NODE_OPTIONS: string}}
+ */
+export function defaultBackendGuardEnv(nodeOptions = process.env.NODE_OPTIONS ?? '') {
+    const guard = new URL('../../test/helpers/default-backend-guard.mjs', import.meta.url).href;
+    return { NODE_OPTIONS: `${nodeOptions} --import=${guard}`.trim() };
+}
+
+/**
  * Find a free TCP port on the loopback interface.
  * @returns {Promise<number>}
  */
@@ -155,6 +175,7 @@ export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, 
     const port = await getFreePort();
     const env = {
         ...process.env,
+        ...NEUTRAL_ENV,
         HOME: home,
         USERPROFILE: home,
         APPDATA: join(home, 'AppData'),
@@ -167,6 +188,7 @@ export async function startProxy({ upstreamUrl, accounts = [], stateFiles = {}, 
         GOOGLE_OAUTH_CLIENT_SECRET: 'test-client-secret',
         REQUEST_TIMEOUT: '10000',
         MAX_RETRIES: '1',
+        ...defaultBackendGuardEnv(),
         ...extraEnv
     };
     delete env.FORCE_COLOR;
