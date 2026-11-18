@@ -9,12 +9,10 @@ import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { sendMessage, sendMessageStream, listModels, getModelQuotas } from './cloudcode-client.js';
-import { PerplexityClient } from './perplexity-client.js';
 import { PerplexityAccountManager } from './perplexity-account-manager.js';
 import { PerplexitySessionClient } from './perplexity-session-client.js';
 import { PerplexitySessionAccountManager } from './perplexity-session-account-manager.js';
 import { getLoginService } from './perplexity-browser-login.js';
-import { getPerplexityBrowserClient } from './perplexity-browser-client.js';
 import { forceRefresh } from './token-extractor.js';
 import { REQUEST_BODY_LIMIT, DEFAULT_HOST, RATE_LIMIT_STATUS, MANAGEMENT_RATE_LIMIT, PERPLEXITY_SERVER_URL, joinUrl, resolveModelAlias } from './constants.js';
 import { rateLimit } from 'express-rate-limit';
@@ -82,7 +80,6 @@ function appendSystemNote(system, note) {
     return (system || '') + note;
 }
 const perplexityAccountManager = new PerplexityAccountManager();
-const perplexityClient = new PerplexityClient(perplexityAccountManager);
 // Perplexity Session-based client (uses subscription instead of API keys)
 const perplexitySessionManager = new PerplexitySessionAccountManager();
 const perplexitySessionClient = new PerplexitySessionClient(perplexitySessionManager);
@@ -289,7 +286,7 @@ function clearModelOverride() {
         if (fs.existsSync(MODEL_OVERRIDE_FILE)) {
             fs.unlinkSync(MODEL_OVERRIDE_FILE);
         }
-    } catch (err) { }
+    } catch { /* ignore */ }
     console.log('[ModelSwitch] Global model override cleared - using request models');
 }
 
@@ -838,7 +835,7 @@ app.get('/perplexity-stats', async (req, res) => {
         } else {
             res.json({ error: 'Python server not available', requests_today: 0 });
         }
-    } catch (e) {
+    } catch {
         res.json({ error: 'Python server not running', requests_today: 0 });
     }
 });
@@ -1336,51 +1333,17 @@ app.post('/v1/messages', async (req, res) => {
         if (headerOverrideModel) {
             const resolvedHeader = resolveModelAlias(headerOverrideModel);
             console.log(`[API] Per-window model override via header: ${headerOverrideModel} → ${resolvedHeader}`);
-            // Use header model directly, skip smart routing
-            const enhancedSystem = appendSystemNote(system, `\n[SYSTEM INFO: You are currently running on ${resolvedHeader} via Antigravity Claude Proxy.]`);
-
-            const request = {
-                model: resolvedHeader,
-                messages,
-                max_tokens: max_tokens || 4096,
-                stream,
-                system: enhancedSystem,
-                tools,
-                tool_choice,
-                thinking,
-                top_p,
-                top_k,
-                temperature
-            };
-
             logRequest('ROUTE', `WINDOW-OVERRIDE: ${headerOverrideModel} → ${resolvedHeader}`, 'per-window', null);
 
             // Continue with request processing... (handled by existing logic below that's skipped)
         }
 
         // ================= SMART ROUTING (FALLBACK TO GLOBAL) =================
-        // Logic:
-        // 1. Read what Custom model value is in settings.json
-        // 2. If extension sends that value → Use dashboard override (Custom model follows dashboard)
-        // 3. If extension sends Default/Opus/Haiku → Pass through directly
-
-        // Get what Custom model value is currently set in settings.json
-        let settingsCustomModel = null;
-        try {
-            if (fs.existsSync(ANTIGRAVITY_SETTINGS)) {
-                const content = fs.readFileSync(ANTIGRAVITY_SETTINGS, 'utf-8');
-                const match = content.match(/"claudeCode\.selectedModel"\s*:\s*"([^"]*)"/);
-                if (match) settingsCustomModel = match[1];
-            }
-        } catch (e) { }
 
         // Precedence: X-Override-Model header, then the X-Session-ID session model, then smart routing
         resolvedModel = headerOverrideModel
             ? resolveModelAlias(headerOverrideModel)
             : (sessionModel || resolveModelAlias(model) || 'gemini-3-flash');
-
-        // Check if extension is sending the Custom model value (from settings.json)
-        const isUsingCustomModel = settingsCustomModel && resolvedModel === settingsCustomModel;
 
         if (!headerOverrideModel && !sessionModel) {
             // ================= LAST-CHANGE-WINS LOGIC =================
@@ -1572,7 +1535,7 @@ app.post('/v1/messages', async (req, res) => {
                                         const textDelta = { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: delta } };
                                         res.write(`event: content_block_delta\ndata: ${JSON.stringify(textDelta)}\n\n`);
                                     }
-                                } catch (e) { /* ignore parse errors */ }
+                                } catch { /* ignore parse errors */ }
                             }
                         }
                     }
@@ -1679,7 +1642,7 @@ app.post('/v1/messages', async (req, res) => {
                 accountManager.clearTokenCache();
                 await forceRefresh();
                 message = 'Token was expired and has been refreshed. Please retry your request.';
-            } catch (refreshError) {
+            } catch {
                 message = 'Could not refresh token. Make sure Antigravity is running.';
             }
         }

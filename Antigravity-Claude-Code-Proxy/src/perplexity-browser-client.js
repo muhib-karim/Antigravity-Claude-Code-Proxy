@@ -201,7 +201,7 @@ class PerplexityBrowserClient {
                     if (data.answer) {
                         finalAnswer = data.answer;
                     }
-                } catch (e) {
+                } catch {
                     // Ignore parse errors in SSE stream
                 }
             }

@@ -6,9 +6,9 @@ This setup allows you to use multiple Google AI accounts with Claude Code CLI, m
 ## Files Created
 
 1. **MULTI_GOOGLE_AI_ACCOUNTS_SETUP.md** - Complete setup guide
-2. **START_PROXY.bat** - Double-click to start the proxy server
+2. **scripts/startup/start-proxy.bat** - Double-click to start the proxy server
 3. **ADD_ACCOUNT.bat** - Double-click to add a Google account
-4. **CHECK_ACCOUNTS.bat** - Double-click to check account status
+4. **npm run accounts:list** - Check account status
 
 ## Quick Setup Steps
 
@@ -22,7 +22,7 @@ npm run accounts:add
 
 ### 2. Start the Proxy Server
 ```bash
-# Double-click START_PROXY.bat or run:
+# Double-click scripts/startup/start-proxy.bat or run:
 cd Antigravity-Claude-Code-Proxy/Antigravity-Claude-Code-Proxy
 npm start
 ```
@@ -50,13 +50,14 @@ claude
 
 ## Available Commands
 
-- **START_PROXY.bat** - Start the proxy server
+- **scripts/startup/start-proxy.bat** - Start the proxy server
 - **ADD_ACCOUNT.bat** - Add a new Google account
-- **CHECK_ACCOUNTS.bat** - Check account status and proxy health
+- **npm run accounts:list** - Check account status
+- **npm run doctor** - Check proxy health (or `curl http://localhost:8080/health` while the proxy runs)
 
 ## Troubleshooting
 
-1. **Proxy not working**: Make sure the proxy is running (START_PROXY.bat)
+1. **Proxy not working**: Make sure the proxy is running (scripts/startup/start-proxy.bat or `npm start`)
 2. **Authentication errors**: Re-add accounts using ADD_ACCOUNT.bat
 3. **Rate limiting (429)**: Wait for the limit to reset; the dashboard shows each session's status
 

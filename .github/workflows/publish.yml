@@ -31,7 +31,9 @@ jobs:
 
     steps:
       - name: Checkout main repo
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Clone extension repo
         run: |
@@ -39,7 +41,7 @@ jobs:
           git clone --depth 1 https://github.com/muhib-karim/Claude-Proxy-Extension.git claude-proxy-ext-src
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
 
@@ -70,7 +72,7 @@ jobs:
         working-directory: claude-proxy-ext-src
         run: |
           npm install
-          npx @vscode/vsce package
+          npx @vscode/vsce@4.1.1 package
 
       - name: Check whether this extension version is already on Open VSX
         if: steps.v.outputs.MATCH == 'true'
@@ -90,7 +92,7 @@ jobs:
         working-directory: claude-proxy-ext-src
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx ovsx publish *.vsix -p "$OVSX_PAT"
+        run: npx ovsx@1.4.0 publish *.vsix -p "$OVSX_PAT"
 
       - name: Note skipped Open VSX upload
         if: steps.v.outputs.MATCH == 'true' && steps.ovsx_check.outputs.PUBLISHED != 'true' && env.HAS_OVSX_PAT != 'true'
@@ -98,7 +100,7 @@ jobs:
 
       - name: Create GitHub release for the extension (not Latest)
         if: steps.v.outputs.MATCH == 'true' && github.event_name == 'push'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           tag_name: ${{ steps.v.outputs.TAG }}
           name: Status bar extension v${{ steps.v.outputs.VERSION }}

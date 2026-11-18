@@ -50,7 +50,7 @@ function isServerRunning() {
             resolve(false);
         });
 
-        socket.on('error', (err) => {
+        socket.on('error', () => {
             socket.destroy();
             resolve(false); // Port free
         });

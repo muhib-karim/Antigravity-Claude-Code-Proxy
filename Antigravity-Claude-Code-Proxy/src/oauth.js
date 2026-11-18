@@ -81,7 +81,7 @@ export function closeCallbackServer() {
     if (!persistentServer && pendingFlows.size === 0) return;
     console.log('[OAuth] Closing callback server and clearing all flows');
     // Clear all pending flow timeouts
-    for (const [state, flow] of pendingFlows) {
+    for (const flow of pendingFlows.values()) {
         if (flow.timeout) clearTimeout(flow.timeout);
     }
     pendingFlows.clear();
@@ -89,7 +89,7 @@ export function closeCallbackServer() {
     if (persistentServer) {
         try {
             persistentServer.close();
-        } catch (e) {
+        } catch {
             // Ignore close errors
         }
         persistentServer = null;

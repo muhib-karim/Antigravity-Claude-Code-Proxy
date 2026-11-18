@@ -15,13 +15,12 @@ export default [
             }
         },
         rules: {
-            // Existing code has many unused variables/empty catches; report them without failing the build
-            'no-unused-vars': 'warn',
-            'no-empty': 'warn'
+            'no-unused-vars': 'error',
+            'no-empty': 'error'
         }
     },
     {
-        files: ['test/**/*.mjs'],
+        files: ['test/**/*.mjs', 'tests/smoke/**/*.mjs', 'scripts/**/*.js', 'bin/**/*.js'],
         languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: globals.node }
     },
     {

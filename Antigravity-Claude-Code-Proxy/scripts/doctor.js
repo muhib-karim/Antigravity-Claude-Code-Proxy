@@ -154,13 +154,12 @@ function checkAccounts() {
     ].filter(Boolean);
 
     let accountsFound = false;
-    let accounts = [];
 
     for (const configPath of configPaths) {
         if (existsSync(configPath)) {
             try {
                 const data = JSON.parse(readFileSync(configPath, 'utf-8'));
-                accounts = data.accounts || [];
+                const accounts = data.accounts || [];
                 if (accounts.length > 0) {
                     accountsFound = true;
                     pass(`Found ${accounts.length} account(s) in ${configPath}`);

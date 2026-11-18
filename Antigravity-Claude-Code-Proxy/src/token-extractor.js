@@ -126,7 +126,7 @@ async function getTokenData() {
             console.log('[Token] Got fresh token from SQLite database');
             return dbData;
         }
-    } catch (err) {
+    } catch {
         console.log('[Token] DB extraction failed, trying HTML page...');
     }
 

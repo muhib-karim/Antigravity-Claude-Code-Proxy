@@ -63,7 +63,7 @@ echo ================================================================
 echo.
 echo You can now start the proxy server with multiple accounts:
 echo.
-echo Option 1: Double-click START_PROXY.bat
+echo Option 1: Double-click scripts\startup\start-proxy.bat
 echo Option 2: Run: npm start
 echo.
 pause

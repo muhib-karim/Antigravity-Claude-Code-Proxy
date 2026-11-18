@@ -49,7 +49,7 @@ npm run format                 # Prettier format
 - `errors.js` - Custom error classes (`RateLimitError`, `AuthError`, `ApiError`, etc.)
 - `token-extractor.js` - Token management from local Antigravity installation
 
-**Testing:** Tests are in `tests/` as CommonJS (`.cjs`) making HTTP requests to local proxy. Shared utilities in `tests/helpers/http-client.cjs`.
+**Testing:** Offline suites live in `test/` (unit, conformance, integration) and `tests/smoke/` as ES modules (`.mjs`); `npm test` runs them. Live scripts are in `tests/` as CommonJS (`.cjs`) and make HTTP requests to a running proxy. Shared utilities are in `tests/helpers/http-client.cjs`.
 
 ## Code Style
 
@@ -59,4 +59,4 @@ npm run format                 # Prettier format
 **Error Handling:** Use custom error classes (not string-based). Helper functions: `isRateLimitError()`, `isAuthError()`  
 **Utilities:** Shared helpers in `src/utils/helpers.js` (`formatDuration`, `sleep`)
 
-**See CLAUDE.md for full architecture details, model handling, and multi-account logic.**
+**See `Antigravity-Claude-Code-Proxy/CLAUDE.md` for full architecture details, model handling, and multi-account logic.**

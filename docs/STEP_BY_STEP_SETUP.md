@@ -43,7 +43,7 @@ cd "C:\Users\YourUser\Desktop\Projects\Antigravity-Claude-Code-Proxy\Antigravity
 ### Step 2: Start the Proxy Server
 
 **Option 1: Using the batch file**
-- Double-click `START_PROXY.bat`
+- From `Antigravity-Claude-Code-Proxy\Antigravity-Claude-Code-Proxy`, run `..\scripts\startup\start-proxy.bat` (or `npm start` there)
 
 **Option 2: Using Command Prompt**
 ```cmd
@@ -148,9 +148,10 @@ claude
 ## Batch Files Created
 
 - `SETUP_ENV_VARIABLES.bat` - Sets up environment variables
-- `START_PROXY.bat` - Starts the proxy server
+- `scripts/startup/start-proxy.bat` - Starts the proxy server
 - `ADD_ACCOUNT.bat` - Adds a Google account via OAuth
-- `CHECK_ACCOUNTS.bat` - Checks account status and proxy health
+- `npm run accounts:list` - Checks account status
+- `npm run doctor` - Checks proxy health (or `curl http://localhost:8080/health` while the proxy runs)
 
 ## Next Steps
 

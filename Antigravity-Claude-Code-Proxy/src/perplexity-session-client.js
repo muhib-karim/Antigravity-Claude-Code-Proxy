@@ -243,7 +243,7 @@ export class PerplexitySessionClient {
                     if (data.final && finalAnswer) {
                         break;
                     }
-                } catch (e) {
+                } catch {
                     // Skip malformed JSON lines
                 }
             }

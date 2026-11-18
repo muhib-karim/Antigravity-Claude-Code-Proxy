@@ -29,7 +29,7 @@ import {
  * @returns {Object} Request body for Cloud Code API
  */
 export function convertAnthropicToGoogle(anthropicRequest) {
-    const { messages, system, max_tokens, temperature, top_p, top_k, stop_sequences, tools, tool_choice, thinking } = anthropicRequest;
+    const { messages, system, max_tokens, temperature, top_p, top_k, stop_sequences, tools, thinking } = anthropicRequest;
     const modelName = anthropicRequest.model || '';
     const modelFamily = getModelFamily(modelName);
     const isClaudeModel = modelFamily === 'claude';

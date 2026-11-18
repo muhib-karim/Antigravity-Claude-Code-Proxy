@@ -9,7 +9,6 @@ tests
 docs
 images
 scripts
-test-db.mjs
 .env
 .env.*
 accounts.json

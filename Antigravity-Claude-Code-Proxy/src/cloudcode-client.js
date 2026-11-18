@@ -1216,7 +1216,7 @@ export async function fetchAvailableModels(token) {
             }
 
             if (!response.ok) {
-                const errorText = await response.text();
+                await response.text();
                 console.log(`[CloudCode] fetchAvailableModels error at ${endpoint}: ${response.status}`);
                 continue;
             }

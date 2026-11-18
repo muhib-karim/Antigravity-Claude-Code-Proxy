@@ -91,7 +91,7 @@ export class PerplexityBrowserLogin {
             if (this.browser) {
                 try {
                     await this.browser.close();
-                } catch (e) { /* ignore */ }
+                } catch { /* ignore */ }
                 this.browser = null;
             }
         }
@@ -132,7 +132,7 @@ export class PerplexityBrowserLogin {
                 });
 
                 console.log(`[PerplexityLogin] Detected email/username: ${email}`);
-            } catch (e) {
+            } catch {
                 console.log('[PerplexityLogin] Could not navigate to settings, trying homepage');
 
                 // Method 2: Try homepage for email
