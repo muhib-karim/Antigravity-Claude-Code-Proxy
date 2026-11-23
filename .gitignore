@@ -88,3 +88,4 @@ out/
 
 # Status bar extension source: lives in its own repository and is cloned fresh by publish.yml
 claude-proxy-ext-src/
+*.code-workspace
