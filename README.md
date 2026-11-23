@@ -12,7 +12,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/muhib-karim/Antigravity-Claude-Code-Proxy" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/node-22%20%7C%2024-339933?logo=node.js&amp;logoColor=white" alt="Node.js 22 and 24">
   <a href="Antigravity-Claude-Code-Proxy/Dockerfile"><img src="https://img.shields.io/badge/docker-non--root%20image-2496ED?logo=docker&amp;logoColor=white" alt="Docker image (non-root)"></a>
-  <a href="https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status"><img src="https://img.shields.io/open-vsx/v/ai-dev-2024/claude-proxy-status?label=Open%20VSX" alt="Status bar extension on Open VSX"></a>
 </p>
 
 <p align="center">
@@ -46,7 +45,7 @@ Antigravity Claude Code Proxy is a local Node.js/Express gateway. It speaks the 
 - **Resilient upstream calls** (v2.11.0): exponential backoff with jitter, `Retry-After` honoured, bounded timeouts, no replay of a started stream, cancellation when the client disconnects, and graceful shutdown that drains open streams.
 - **Operable**: `/livez`, `/readyz` and Prometheus `/metrics`; a multi-stage Docker image that runs as a non-root user.
 - **Verified offline**: a 41-fixture Anthropic conformance suite plus unit and integration tests (412 in total) run against a mock upstream on every push.
-- **Status bar extension** for VS Code-based editors, [published on Open VSX](https://open-vsx.org/extension/ai-dev-2024/claude-proxy-status). It shows the active model and quotas and allows one-click switching.
+- **Status bar extension** for VS Code-based editors. It shows the active model and quotas and allows one-click switching.
 
 > **Verification scope.** CI runs lint, format and type checks, the offline suites under an 80% coverage gate on Node 22 and 24 against mocked upstreams, a Docker build and smoke run, CodeQL, secret scanning and a runtime dependency audit. Those checks do not establish current access to every remote model or account. Provider names and model identifiers can change; verify the configured provider before relying on it.
 >
